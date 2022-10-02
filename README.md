@@ -1,0 +1,2 @@
+# Splatoon3TableturfBattle
+スプラトゥーン3のナワバトラーの検討用ツール
