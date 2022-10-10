@@ -150,7 +150,7 @@ impl FieldShape {
         }
         count
     }
-    fn count_player(&self, player_id: PlayerId) -> usize {
+    pub fn count_player(&self, player_id: PlayerId) -> usize {
         self.count_squares(&[
             FieldSquareType::Colored { player_id },
             FieldSquareType::Special { player_id },
@@ -165,7 +165,7 @@ pub struct CardShape {
     pub squares: Vec<Vec<CardSquareType>>,
 }
 impl CardShape {
-    fn new(item: &str) -> Self {
+    pub fn new(item: &str) -> Self {
         let mut squares: Vec<Vec<CardSquareType>> = vec![];
         for row in item.split('\n') {
             squares.push(row.chars().map(CardSquareType::from).collect())
@@ -174,6 +174,39 @@ impl CardShape {
             height: squares.len(),
             width: squares[0].len(),
             squares,
+        }
+    }
+    pub fn trim(seed: &CardShape) -> CardShape {
+        let mut min_y = seed.height;
+        let mut max_y = 1;
+        let mut min_x = seed.width;
+        let mut max_x = 1;
+        for i in 0..seed.height {
+            for j in 0..seed.width {
+                if matches!(
+                    seed.squares[i][j],
+                    CardSquareType::Colored | CardSquareType::Special
+                ) {
+                    min_y = std::cmp::min(min_y, i);
+                    max_y = std::cmp::max(max_y, i);
+                    min_x = std::cmp::min(min_x, j);
+                    max_x = std::cmp::max(max_x, j);
+                }
+            }
+        }
+
+        let mut trimmed = vec![];
+        for i in min_y..=max_y {
+            let mut row = vec![];
+            for j in min_x..=max_x {
+                row.push(seed.squares[i][j]);
+            }
+            trimmed.push(row);
+        }
+        Self {
+            height: trimmed.len(),
+            width: trimmed[0].len(),
+            squares: trimmed,
         }
     }
 
@@ -201,7 +234,7 @@ impl CardShape {
         }
         count
     }
-    fn count_colored_squares(&self, _player_id: PlayerId) -> usize {
+    pub fn count_colored_squares(&self) -> usize {
         self.count_squares(&[CardSquareType::Colored, CardSquareType::Special])
     }
     // 右90度回転
@@ -289,6 +322,8 @@ impl State {
         yellow_deck: &Vec<CardId>,
         blue_deck: &Vec<CardId>,
     ) -> Self {
+        assert_eq!(yellow_deck.len(), env.deck_size);
+        assert_eq!(blue_deck.len(), env.deck_size);
         // デッキに含まれるのはカード情報の存在するカードのみであることを検査する。
         for card_id in yellow_deck.iter() {
             assert!(cards.contains_key(card_id));
@@ -748,5 +783,15 @@ mod tests {
         let shape = CardShape::new("yyy..\nY....");
         let actual = shape.rotate();
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_trim() {
+        let big = CardShape::new(
+            "........\n........\n.yyyyy..\n.yyyYy..\n..y.....\n.y......\n........\n........",
+        );
+        let trimmed = CardShape::trim(&big);
+        let expected = CardShape::new("yyyyy\nyyyYy\n.y...\ny....");
+        assert_eq!(trimmed, expected);
     }
 }
