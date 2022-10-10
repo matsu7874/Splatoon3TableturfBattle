@@ -1,9 +1,9 @@
 use std::collections::HashMap;
-use std::io;
+
 
 use serde::{Deserialize, Serialize};
 
-use tableturfbattle::{Action, Card, CardShape, Direction, Environment, Field, State};
+use tableturfbattle::{Card, CardShape, Environment, Field, State};
 macro_rules! parse_input {
     ($x:expr, $t:ident) => {
         $x.trim().parse::<$t>().unwrap()
@@ -29,8 +29,8 @@ impl CardJson {
             id: self.id,
             name: self.name.clone(),
             cost: self.cost,
-            power: power,
-            shape: shape,
+            power,
+            shape,
         }
     }
 }
@@ -78,7 +78,7 @@ fn main() {
     let mut state = State::new(
         &env,
         &card_catalog,
-        &field.clone(),
+        &field,
         &yellow_deck,
         &blue_deck,
     );
@@ -98,7 +98,7 @@ fn main() {
         let yellow_action = yellow_candidates[0];
         let blue_candidates = state.generate_valid_actions(&card_catalog, 1);
         let blue_action = blue_candidates[0];
-        state.apply(&env, &card_catalog, &vec![yellow_action, blue_action]);
+        state.apply(&env, &card_catalog, &[yellow_action, blue_action]);
     }
 
     if state.is_win(&env, 0) {
