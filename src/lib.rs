@@ -1,11 +1,11 @@
 use std::convert::From;
 use std::{
     collections::{HashMap, VecDeque},
-    fmt::Display,
+    fmt::{Display, Error, Formatter},
 };
-type CardId = usize;
-type FieldId = usize;
-type PlayerId = usize;
+pub type CardId = usize;
+pub type FieldId = usize;
+pub type PlayerId = usize;
 
 const DYDX4: [(usize, usize); 4] = [(!0, 0), (0, !0), (0, 1), (1, 0)];
 const DYDX8: [(usize, usize); 8] = [
@@ -116,7 +116,7 @@ impl From<char> for CardSquareType {
 }
 
 impl Display for CardSquareType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.to_char())
     }
 }
@@ -128,7 +128,7 @@ pub struct FieldShape {
     pub squares: Vec<Vec<FieldSquareType>>,
 }
 impl FieldShape {
-    fn new(item: &str) -> Self {
+    pub fn new(item: &str) -> Self {
         let mut squares: Vec<Vec<FieldSquareType>> = vec![];
         for row in item.split('\n') {
             squares.push(row.chars().map(FieldSquareType::from).collect())
@@ -156,6 +156,13 @@ impl FieldShape {
             FieldSquareType::Special { player_id },
         ])
     }
+    pub fn to_string(&self) -> String {
+        self.squares
+            .iter()
+            .map(|row| String::from_iter(row.iter().map(|c| c.to_char())))
+            .collect::<Vec<String>>()
+            .join("\n")
+    }
 }
 
 #[derive(Eq, PartialEq, Debug, Clone, Hash)]
@@ -175,6 +182,13 @@ impl CardShape {
             width: squares[0].len(),
             squares,
         }
+    }
+    pub fn to_string(&self) -> String {
+        self.squares
+            .iter()
+            .map(|row| String::from_iter(row.iter().map(|c| c.to_char())))
+            .collect::<Vec<String>>()
+            .join("\n")
     }
     pub fn trim(seed: &CardShape) -> CardShape {
         let mut min_y = seed.height;
@@ -285,6 +299,31 @@ pub enum Direction {
     Right,
     Left,
 }
+impl std::fmt::Display for Direction {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let s = match self {
+            Direction::Up => 'U',
+            Direction::Down => 'D',
+            Direction::Right => 'R',
+            Direction::Left => 'L',
+        };
+        write!(f, "{}", s)
+    }
+}
+impl From<char> for Direction {
+    fn from(c: char) -> Self {
+        match c {
+            'U' => Self::Up,
+            'D' => Self::Down,
+            'R' => Self::Right,
+            'L' => Self::Left,
+            _ => {
+                eprintln!("Direction from error by: {}", c);
+                unreachable!()
+            }
+        }
+    }
+}
 #[derive(PartialEq, Eq, Debug, Clone, Copy, PartialOrd)]
 pub enum Action {
     Pass {
@@ -303,6 +342,45 @@ pub enum Action {
         x: usize,
     },
 }
+impl std::fmt::Display for Action {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let s = match self {
+            Action::Pass { card_id } => format!("PASS {}", card_id),
+            Action::Put { card_id, dir, y, x } => format!("PUT {} {} {} {}", card_id, dir, y, x),
+            Action::SpecialPut { card_id, dir, y, x } => {
+                format!("SPECIAL_PUT {} {} {} {}", card_id, dir, y, x)
+            }
+        };
+        write!(f, "{}", s)
+    }
+}
+impl From<&str> for Action {
+    fn from(s: &str) -> Self {
+        let chunks = s
+            .trim()
+            .split(" ")
+            .filter(|s| s.len() > 0)
+            .collect::<Vec<&str>>();
+        match chunks[0] {
+            "PASS" => Self::Pass {
+                card_id: chunks[1].parse::<usize>().unwrap(),
+            },
+            "PUT" => Self::Put {
+                card_id: chunks[1].parse::<usize>().unwrap(),
+                dir: Direction::from(chunks[2].parse::<char>().unwrap()),
+                y: chunks[3].parse::<usize>().unwrap(),
+                x: chunks[4].parse::<usize>().unwrap(),
+            },
+            "SPECIAL_PUT" => Self::SpecialPut {
+                card_id: chunks[1].parse::<usize>().unwrap(),
+                dir: Direction::from(chunks[2].parse::<char>().unwrap()),
+                y: chunks[3].parse::<usize>().unwrap(),
+                x: chunks[4].parse::<usize>().unwrap(),
+            },
+            _ => unreachable!(),
+        }
+    }
+}
 
 pub struct PlayerState {
     pub special_point: usize,
@@ -317,7 +395,7 @@ pub struct State {
 impl State {
     pub fn new(
         env: &Environment,
-        cards: &HashMap<CardId, Card>,
+        cards: &HashMap<CardId, &Card>,
         field: &Field,
         yellow_deck: &Vec<CardId>,
         blue_deck: &Vec<CardId>,
@@ -345,7 +423,7 @@ impl State {
         }
 
         State {
-            turn: 0,
+            turn: 1,
             field: field.shape.clone(),
             players: vec![
                 PlayerState {
@@ -373,11 +451,11 @@ impl State {
         self.is_done(env) && self.field.count_player(0) == self.field.count_player(1)
     }
     pub fn is_done(&self, env: &Environment) -> bool {
-        self.turn == env.max_turn
+        self.turn == env.max_turn + 1
     }
     fn is_valid_action(
         &self,
-        cards: &HashMap<CardId, Card>,
+        cards: &HashMap<CardId, &Card>,
         action: &Action,
         player_id: usize,
     ) -> bool {
@@ -486,7 +564,7 @@ impl State {
     }
     pub fn generate_valid_actions(
         &mut self,
-        cards: &HashMap<CardId, Card>,
+        cards: &HashMap<CardId, &Card>,
         player_id: PlayerId,
     ) -> Vec<Action> {
         let mut candidates = vec![];
@@ -521,23 +599,7 @@ impl State {
         candidates
     }
 
-    pub fn apply_put(&mut self, _cards: &HashMap<CardId, Card>, actions: &[Action]) {
-        assert!(actions.iter().all(|a| matches!(
-            a,
-            Action::Put {
-                card_id: _,
-                dir: _,
-                y: _,
-                x: _,
-            } | Action::SpecialPut {
-                card_id: _,
-                dir: _,
-                y: _,
-                x: _,
-            }
-        )))
-    }
-    pub fn apply(&mut self, env: &Environment, cards: &HashMap<CardId, Card>, actions: &[Action]) {
+    pub fn apply(&mut self, env: &Environment, cards: &HashMap<CardId, &Card>, actions: &[Action]) {
         // まず受け取ったアクションが有効なことを確認する。
         if !self.is_valid_action(cards, &actions[0], 0)
             || !self.is_valid_action(cards, &actions[1], 1)
@@ -604,7 +666,7 @@ impl State {
                             self.field.squares[cy][cx] = FieldSquareType::Colored {
                                 player_id: *action_index,
                             };
-                        } else if matches!(card.shape.squares[i][j], CardSquareType::Colored) {
+                        } else if matches!(card.shape.squares[i][j], CardSquareType::Special) {
                             let cy = y + i - ry;
                             let cx = x + j - rx;
                             self.field.squares[cy][cx] = FieldSquareType::Special {
@@ -705,6 +767,7 @@ pub struct Field {
     pub name: String,
     pub shape: FieldShape,
 }
+
 impl Default for Field {
     fn default() -> Self {
         Self {

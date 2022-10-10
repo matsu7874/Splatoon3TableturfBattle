@@ -1,40 +1,161 @@
+use rand::prelude::*;
 use std::io;
+use std::io::{stdout, Write};
+use tableturfbattle::{Card, CardId, CardShape, Environment, Field, FieldShape, State};
+macro_rules! read_line {
+    () => {{
+        let mut buff = String::new();
+        io::stdin()
+            .read_line(&mut buff)
+            .expect("標準入力から読める"); // 1行読み込み
+        buff.split("\n")
+            .map(|s| s.split(" ").map(|s| s.to_string()).collect::<Vec<String>>())
+            .flatten()
+            .filter(|s| s.len() > 0)
+            .collect::<Vec<String>>()
+    }};
+}
 macro_rules! parse_input {
     ($x:expr, $t:ident) => {
         $x.trim().parse::<$t>().unwrap()
     };
 }
 
-fn main() {
-    println!("my name");
-    let mut input_line = String::new();
-    io::stdin().read_line(&mut input_line).unwrap(); // "y x"の形
-    let field_size_y = parse_input!(input_line, usize);
-    let field_size_x = parse_input!(input_line, usize);
-    let mut field = vec![];
+struct InitialInput {
+    deck_size: usize,
+    hand_size: usize,
+    max_turn: usize,
+    field_size_y: usize,
+    field_size_x: usize,
+    field: FieldShape,
+    cards: Vec<Card>,
+}
+fn read_initial_input() -> InitialInput {
+    let mut rng = rand::thread_rng();
+    let mut a: usize = rng.gen();
+
+    let chunks = read_line!();
+    let deck_size = parse_input!(chunks[0], usize);
+    let hand_size = parse_input!(chunks[1], usize);
+    let max_turn = parse_input!(chunks[2], usize);
+
+    let chunks = read_line!();
+    let field_size_y = parse_input!(chunks[0], usize);
+    let field_size_x = parse_input!(chunks[1], usize);
+
+    let mut rows = vec![];
     for i in 0..field_size_y {
-        let mut row = vec![];
-        let mut input_line = String::new();
-        io::stdin().read_line(&mut input_line).unwrap(); // "y x"の形
-        let field_size_y = parse_input!(input_line, usize);
-        let field_size_x = parse_input!(input_line, usize);
+        let chunks = read_line!();
+        rows.push(chunks.join(""))
+    }
+    let field = FieldShape::new(&rows.join("\n"));
+
+    let chunks = read_line!();
+    let n_cards = parse_input!(chunks[0], usize);
+    let mut cards = vec![];
+    for i in 0..n_cards {
+        let chunks = read_line!();
+        let card_id = parse_input!(chunks[0], usize);
+        let card_cost = parse_input!(chunks[1], usize);
+        let card_size_y = parse_input!(chunks[2], usize);
+        let card_size_x = parse_input!(chunks[3], usize);
+        let mut rows = vec![];
+        for i in 0..card_size_y {
+            let chunks = read_line!();
+            rows.push(chunks.join(""))
+        }
+        let card_shape = CardShape::new(&rows.join("\n"));
+        cards.push(Card {
+            id: card_id,
+            name: "".to_string(),
+            cost: card_cost,
+            power: card_shape.count_colored_squares(),
+            shape: card_shape,
+        })
     }
 
-    // READ LIST OF CARDS
-    println!("list of cards");
+    InitialInput {
+        deck_size,
+        hand_size,
+        max_turn,
+        field_size_y,
+        field_size_x,
+        field,
+        cards,
+    }
+}
+
+struct TurnInput {
+    turn: usize,
+    special_points: Vec<usize>,
+    field: FieldShape,
+    hands: Vec<CardId>,
+    valid_actions: Vec<String>, // Stringを解釈する
+}
+fn read_turn_input(field_size_y: usize) -> TurnInput {
+    let chunks = read_line!();
+    let turn = parse_input!(chunks[0], usize);
+
+    let chunks = read_line!();
+    let special_points = chunks
+        .iter()
+        .map(|s| s.parse::<usize>().unwrap())
+        .collect::<Vec<usize>>();
+
+    let mut rows = vec![];
+    for i in 0..field_size_y {
+        let chunks = read_line!();
+        rows.push(chunks.join(""))
+    }
+    let field = FieldShape::new(&rows.join("\n"));
+
+    let chunks = read_line!();
+    let hands = chunks
+        .iter()
+        .map(|s| s.parse::<usize>().unwrap())
+        .collect::<Vec<usize>>();
+    let chunks = read_line!();
+    let n_actions = parse_input!(chunks[0], usize);
+    let mut valid_actions = vec![];
+    for _ in 0..n_actions {
+        let chunks = read_line!();
+        valid_actions.push(chunks.join(" "));
+    }
+    TurnInput {
+        turn,
+        special_points,
+        field,
+        hands,
+        valid_actions,
+    }
+}
+
+fn main() {
+    let mut rng = rand::thread_rng();
+
+    let initial_input = read_initial_input();
     // スターターデッキ
     let deck = [
         6, 13, 22, 28, 40, 34, 45, 52, 55, 56, 159, 137, 141, 103, 92,
     ];
-    const MAX_TURN: usize = 12;
-    for turn in 0..MAX_TURN {
-        // read game
-        // read field
-        // read hands
-        let hands = vec![0];
-        println!("PASS {}", hands[0]);
+    println!(
+        "{}",
+        deck.iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<String>>()
+            .join(" ")
+    );
+    loop {
+        let turn_input = read_turn_input(initial_input.field_size_y);
+        let action_index = rng.gen_range(0..turn_input.valid_actions.len());
+        // TODO: 行動を実装
+        println!("{}", turn_input.valid_actions[action_index]);
         // PASS {card_id}
         // PUT {card_id} {dir} {y} {x}
         // SPECIAL {card_id} {dir} {y} {x}
+
+        if turn_input.turn == initial_input.max_turn {
+            break;
+        }
     }
 }
