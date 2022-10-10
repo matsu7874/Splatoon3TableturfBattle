@@ -1,7 +1,7 @@
 use std::convert::From;
 use std::{
     collections::{HashMap, VecDeque},
-    fmt::{Display, Error, Formatter},
+    fmt::{Display, Formatter},
 };
 pub type CardId = usize;
 pub type FieldId = usize;
@@ -358,8 +358,8 @@ impl From<&str> for Action {
     fn from(s: &str) -> Self {
         let chunks = s
             .trim()
-            .split(" ")
-            .filter(|s| s.len() > 0)
+            .split(' ')
+            .filter(|s| !s.is_empty())
             .collect::<Vec<&str>>();
         match chunks[0] {
             "PASS" => Self::Pass {

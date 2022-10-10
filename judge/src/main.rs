@@ -3,14 +3,9 @@ use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::prelude::*;
-use std::io::{BufRead, BufReader, Error, ErrorKind};
+use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use tableturfbattle::{Action, Card, CardShape, Environment, Field, State};
-macro_rules! parse_input {
-    ($x:expr, $t:ident) => {
-        $x.trim().parse::<$t>().unwrap()
-    };
-}
 
 #[derive(Serialize, Deserialize)]
 struct CardJson {
@@ -96,7 +91,7 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
             Err(why) => panic!("couldn't write to bot stdin: {}", why),
             Ok(_) => {}
         }
-        stdin.flush().unwrap_or_else(|_| ());
+        stdin.flush().unwrap_or(());
     }
 
     let mut card_catalog = HashMap::new();
@@ -115,8 +110,8 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
         };
         let mut deck: Vec<usize> = s
             .trim()
-            .split(" ")
-            .filter(|s| s.len() > 0)
+            .split(' ')
+            .filter(|s| !s.is_empty())
             .map(|s| {
                 s.parse::<usize>()
                     .expect("botを完全に信用する。TODO:ここは入力の検証が必要。")
@@ -127,8 +122,8 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
     }
 
     // 毎ターンの繰り返し処理
-    let mut state = State::new(&env, &card_catalog, &field, &decks[0], &decks[1]);
-    while !state.is_done(&env) {
+    let mut state = State::new(env, &card_catalog, field, &decks[0], &decks[1]);
+    while !state.is_done(env) {
         let mut actions = vec![];
 
         for player_id in 0..2 {
@@ -164,7 +159,7 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
                 Err(why) => panic!("couldn't write to bot stdin: {}", why),
                 Ok(_) => {}
             }
-            stdin.flush().unwrap_or_else(|_| ());
+            stdin.flush().unwrap_or(());
 
             // TODO: botから入力を受け取る
             let stdout = bot_processes[player_id].stdout.as_mut().expect("");
@@ -178,14 +173,14 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
             actions.push(action);
         }
 
-        state.apply(&env, &card_catalog, &actions);
+        state.apply(env, &card_catalog, &actions);
     }
     drop(bot_processes);
 
-    let winner = if state.is_win(&env, 0) {
+    let winner = if state.is_win(env, 0) {
         info!("Player0(Yellow) won");
         Some(0)
-    } else if state.is_win(&env, 1) {
+    } else if state.is_win(env, 1) {
         info!("Player1(Blue) won");
         Some(1)
     } else {

@@ -1,7 +1,7 @@
 use rand::prelude::*;
 use std::io;
-use std::io::{stdout, Write};
-use tableturfbattle::{Card, CardId, CardShape, Environment, Field, FieldShape, State};
+
+use tableturfbattle::{Card, CardId, CardShape, FieldShape};
 macro_rules! read_line {
     () => {{
         let mut buff = String::new();
@@ -32,7 +32,6 @@ struct InitialInput {
 }
 fn read_initial_input() -> InitialInput {
     let mut rng = rand::thread_rng();
-    let mut a: usize = rng.gen();
 
     let chunks = read_line!();
     let deck_size = parse_input!(chunks[0], usize);
@@ -44,7 +43,7 @@ fn read_initial_input() -> InitialInput {
     let field_size_x = parse_input!(chunks[1], usize);
 
     let mut rows = vec![];
-    for i in 0..field_size_y {
+    for _ in 0..field_size_y {
         let chunks = read_line!();
         rows.push(chunks.join(""))
     }
@@ -53,14 +52,14 @@ fn read_initial_input() -> InitialInput {
     let chunks = read_line!();
     let n_cards = parse_input!(chunks[0], usize);
     let mut cards = vec![];
-    for i in 0..n_cards {
+    for _ in 0..n_cards {
         let chunks = read_line!();
         let card_id = parse_input!(chunks[0], usize);
         let card_cost = parse_input!(chunks[1], usize);
         let card_size_y = parse_input!(chunks[2], usize);
-        let card_size_x = parse_input!(chunks[3], usize);
+        let _card_size_x = parse_input!(chunks[3], usize);
         let mut rows = vec![];
-        for i in 0..card_size_y {
+        for _ in 0..card_size_y {
             let chunks = read_line!();
             rows.push(chunks.join(""))
         }
@@ -103,7 +102,7 @@ fn read_turn_input(field_size_y: usize) -> TurnInput {
         .collect::<Vec<usize>>();
 
     let mut rows = vec![];
-    for i in 0..field_size_y {
+    for _ in 0..field_size_y {
         let chunks = read_line!();
         rows.push(chunks.join(""))
     }
