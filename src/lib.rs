@@ -533,32 +533,50 @@ impl State {
                     Direction::Left => card.shape.rotate().rotate().rotate(),
                 };
                 // 置けるのか？
+                let mut is_adjacent = false;
                 let (ry, rx) = shape.find_reference_point(0);
                 for i in 0..card.shape.height {
                     for j in 0..card.shape.width {
-                        match card.shape.squares[i][j] {
-                            CardSquareType::Colored | CardSquareType::Special => {
-                                // 基準点(ry,rx)が(y,x)に置かれるので左下の座標がマイナスになる可能性がある
-                                if y + i < ry || x + j < rx {
-                                    return false;
-                                }
-                                let cy = y + i - ry;
-                                let cx = x + j - rx;
-                                if matches!(
-                                    self.field.squares[cy][cx],
-                                    FieldSquareType::Special { player_id: _ }
-                                        | FieldSquareType::Block
-                                ) {
-                                    return false;
-                                }
+                        if matches!(
+                            card.shape.squares[i][j],
+                            CardSquareType::Colored | CardSquareType::Special
+                        ) {
+                            // 枠内＆SpecialとBlock以外＆Specialに隣接
+                            // 基準点(ry,rx)が(y,x)に置かれるので左下の座標がマイナスになる可能性がある
+                            if y + i < ry || x + j < rx {
+                                return false;
                             }
-                            _ => {
-                                //do_nothing
+                            let cy = y + i - ry;
+                            let cx = x + j - rx;
+                            if self.field.height <= cy || self.field.width <= cx {
+                                return false;
+                            }
+                            if matches!(
+                                self.field.squares[cy][cx],
+                                FieldSquareType::Special { player_id: _ } | FieldSquareType::Block
+                            ) {
+                                return false;
+                            }
+
+                            // 既存の自身のスペシャルマスに隣接しているか判定する
+                            for (dy, dx) in DYDX8.iter() {
+                                if self.field.height <= cy.wrapping_add(*dy)
+                                    || self.field.width <= cx.wrapping_add(*dx)
+                                {
+                                    continue;
+                                }
+                                if let FieldSquareType::Special { player_id: pid } =
+                                    self.field.squares[cy.wrapping_add(*dy)][cx.wrapping_add(*dx)]
+                                {
+                                    if pid == player_id {
+                                        is_adjacent = true;
+                                    }
+                                }
                             }
                         }
                     }
                 }
-                true
+                is_adjacent
             }
         }
     }
@@ -569,9 +587,10 @@ impl State {
     ) -> Vec<Action> {
         let mut candidates = vec![];
         for card_id in self.players[player_id].hands.iter() {
-            // let card = cards
-            //     .get(card_id)
-            //     .expect("all cards in deck are contained cards");
+            let cost = cards
+                .get(card_id)
+                .expect("all cards in deck are contained cards")
+                .cost;
             for dir in [
                 Direction::Up,
                 Direction::Right,
@@ -590,6 +609,21 @@ impl State {
                         };
                         if self.is_valid_action(cards, &action, player_id) {
                             candidates.push(action);
+                        }
+                    }
+                }
+                if cost <= self.players[player_id].special_point {
+                    for y in 0..self.field.height {
+                        for x in 0..self.field.width {
+                            let action = Action::SpecialPut {
+                                card_id: *card_id,
+                                dir: *dir,
+                                y,
+                                x,
+                            };
+                            if self.is_valid_action(cards, &action, player_id) {
+                                candidates.push(action);
+                            }
                         }
                     }
                 }
@@ -644,79 +678,72 @@ impl State {
         // TODO: 同一powerのカードの衝突を考慮する。
         for (_, action_index) in action_orders.iter() {
             // PASS
-            if let Action::Pass { card_id: _ } = actions[*action_index] {
-                self.players[*action_index].special_point += 1;
-            }
-            if let Action::Put { card_id, dir, y, x } = actions[*action_index] {
-                let card = cards
-                    .get(&card_id)
-                    .expect("all cards in deck are contained cards");
-                let shape = match dir {
-                    Direction::Up => card.shape.clone(),
-                    Direction::Right => card.shape.rotate(),
-                    Direction::Down => card.shape.rotate().rotate(),
-                    Direction::Left => card.shape.rotate().rotate().rotate(),
-                };
-                let (ry, rx) = shape.find_reference_point(0);
-                for i in 0..card.shape.height {
-                    for j in 0..card.shape.width {
-                        if matches!(card.shape.squares[i][j], CardSquareType::Colored) {
-                            let cy = y + i - ry;
-                            let cx = x + j - rx;
-                            self.field.squares[cy][cx] = FieldSquareType::Colored {
-                                player_id: *action_index,
-                            };
-                        } else if matches!(card.shape.squares[i][j], CardSquareType::Special) {
-                            let cy = y + i - ry;
-                            let cx = x + j - rx;
-                            self.field.squares[cy][cx] = FieldSquareType::Special {
-                                player_id: *action_index,
-                            };
+            match actions[*action_index] {
+                Action::Pass { card_id } => {
+                    self.players[*action_index].special_point += 1;
+                }
+                Action::Put { card_id, dir, y, x } => {
+                    let card = cards
+                        .get(&card_id)
+                        .expect("all cards in deck are contained cards");
+                    let shape = match dir {
+                        Direction::Up => card.shape.clone(),
+                        Direction::Right => card.shape.rotate(),
+                        Direction::Down => card.shape.rotate().rotate(),
+                        Direction::Left => card.shape.rotate().rotate().rotate(),
+                    };
+                    let (ry, rx) = shape.find_reference_point(0);
+                    for i in 0..card.shape.height {
+                        for j in 0..card.shape.width {
+                            if matches!(card.shape.squares[i][j], CardSquareType::Colored) {
+                                let cy = y + i - ry;
+                                let cx = x + j - rx;
+                                self.field.squares[cy][cx] = FieldSquareType::Colored {
+                                    player_id: *action_index,
+                                };
+                            } else if matches!(card.shape.squares[i][j], CardSquareType::Special) {
+                                let cy = y + i - ry;
+                                let cx = x + j - rx;
+                                self.field.squares[cy][cx] = FieldSquareType::Special {
+                                    player_id: *action_index,
+                                };
+                            }
                         }
                     }
                 }
+                Action::SpecialPut { card_id, dir, y, x } => {
+                    eprintln!("use SpecialPut:{:?}", actions[*action_index]);
+                    let card = cards
+                        .get(&card_id)
+                        .expect("all cards in deck are contained cards");
+                    let shape = match dir {
+                        Direction::Up => card.shape.clone(),
+                        Direction::Right => card.shape.rotate(),
+                        Direction::Down => card.shape.rotate().rotate(),
+                        Direction::Left => card.shape.rotate().rotate().rotate(),
+                    };
+                    let (ry, rx) = shape.find_reference_point(0);
+                    for i in 0..card.shape.height {
+                        for j in 0..card.shape.width {
+                            if matches!(card.shape.squares[i][j], CardSquareType::Colored) {
+                                let cy = y + i - ry;
+                                let cx = x + j - rx;
+                                self.field.squares[cy][cx] = FieldSquareType::Colored {
+                                    player_id: *action_index,
+                                };
+                            } else if matches!(card.shape.squares[i][j], CardSquareType::Special) {
+                                let cy = y + i - ry;
+                                let cx = x + j - rx;
+                                self.field.squares[cy][cx] = FieldSquareType::Special {
+                                    player_id: *action_index,
+                                };
+                            }
+                        }
+                    }
+                    self.players[*action_index].special_point -= card.cost;
+                }
             }
         }
-        // powerの大きい方から順番に処理
-        // 2人用で実装してしまう
-
-        // match (actions[0], actions[1]) {
-        //     (Action::Pass { card_id: _ }, Action::Pass { card_id: _ }) => {
-        //         // 処理済み
-        //     }
-        //     (Action::Pass { card_id: _ }, _) => {
-        //         // player0がPASSならplayer1は衝突を気にしなくて良い
-        //         match actions[1] {
-        //             Action::Put {
-        //                 card_id: _,
-        //                 dir: _,
-        //                 y: _,
-        //                 x: _,
-        //             } => {
-        //                 todo!()
-        //             }
-        //             Action::SpecialPut {
-        //                 card_id: _,
-        //                 dir: _,
-        //                 y: _,
-        //                 x: _,
-        //             } => {
-        //                 todo!()
-        //             }
-        //             _ => unreachable!(),
-        //         }
-        //     }
-        //     (_, Action::Pass { card_id: _ }) => {
-        //         // player1がPASSならplayer0は衝突を気にしなくて良い
-        //     }
-        //     _ => {
-        //         //同時に置こうとしているケース
-        //         // powerが同じか？
-        //         // 大きい方から処理
-        //         // ぶつかるマスを計算
-        //         todo!()
-        //     }
-        // }
 
         // 使ったカードを捨てる
         for i in 0..self.players.len() {
