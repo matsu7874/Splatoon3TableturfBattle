@@ -149,7 +149,6 @@ fn main() {
     );
     loop {
         let turn_input = read_turn_input(initial_input.field_size_y);
-        eprintln!("turn:{}, hands:{:?}", turn_input.turn, turn_input.hands);
         assert_eq!(turn_input.hands.len(), initial_input.hand_size);
         let action_index = rng.gen_range(0..turn_input.valid_actions.len());
         // TODO: 行動を実装
