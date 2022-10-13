@@ -12,11 +12,11 @@ struct CardJson {
     id: usize,
     name: String,
     cost: usize,
-    cells: String,
+    squares: String,
 }
 impl CardJson {
     fn to_card(&self) -> Card {
-        let seed = CardShape::new(&self.cells);
+        let seed = CardShape::new(&self.squares);
         let shape = CardShape::trim(&seed);
         let power = shape.count_colored_squares();
         Card {
@@ -40,7 +40,7 @@ fn load_card_catalog() -> serde_json::Result<Vec<Card>> {
 
 struct GameInfo {
     winner: Option<usize>,
-    n_cells: Vec<usize>,
+    n_squares: Vec<usize>,
 }
 fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<String>) -> GameInfo {
     let mut bot_processes = vec![];
@@ -196,7 +196,7 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
 
     GameInfo {
         winner,
-        n_cells: vec![state.field.count_player(0), state.field.count_player(1)],
+        n_squares: vec![state.field.count_player(0), state.field.count_player(1)],
     }
 }
 fn main() {
@@ -208,7 +208,7 @@ fn main() {
     // TODO: 別のフィールドも使えるようにする
     let field = Field::default();
     let mut total_wins = vec![0; 2];
-    for i in 0..1000 {
+    for i in 0..3 {
         let result = exec_game(
             &env,
             &cards,
@@ -220,9 +220,15 @@ fn main() {
         );
         if let Some(winner) = result.winner {
             total_wins[winner] += 1;
-            info!("game:{}\twinner:{}", i, winner);
+            info!(
+                "game:{}\twinner:{}\tplayer0_square:{}\tplayer1_square:{}",
+                i, winner, result.n_squares[0], result.n_squares[1]
+            );
         } else {
-            info!("game:{}\twinner: none", i);
+            info!(
+                "game:{}\twinner:none\tplayer0_square:{}\tplayer1_square:{}",
+                i, result.n_squares[0], result.n_squares[1]
+            );
         }
     }
     println!("\ntotal_wins: {:?}", total_wins);
