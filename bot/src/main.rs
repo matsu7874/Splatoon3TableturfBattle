@@ -31,8 +31,6 @@ struct InitialInput {
     cards: Vec<Card>,
 }
 fn read_initial_input() -> InitialInput {
-    let mut rng = rand::thread_rng();
-
     let chunks = read_line!();
     let deck_size = parse_input!(chunks[0], usize);
     let hand_size = parse_input!(chunks[1], usize);
@@ -47,6 +45,7 @@ fn read_initial_input() -> InitialInput {
         let chunks = read_line!();
         rows.push(chunks.join(""))
     }
+    assert!(rows.iter().all(|row| row.len() == field_size_x));
     let field = FieldShape::new(&rows.join("\n"));
 
     let chunks = read_line!();
@@ -89,7 +88,7 @@ struct TurnInput {
     special_points: Vec<usize>,
     field: FieldShape,
     hands: Vec<CardId>,
-    valid_actions: Vec<String>, // Stringを解釈する
+    valid_actions: Vec<String>, // TODO: Stringを解釈する
 }
 fn read_turn_input(field_size_y: usize) -> TurnInput {
     let chunks = read_line!();
@@ -137,6 +136,10 @@ fn main() {
     let deck = [
         6, 13, 22, 28, 40, 34, 45, 52, 55, 56, 159, 137, 141, 103, 92,
     ];
+    assert!(deck
+        .iter()
+        .all(|card_id| initial_input.cards.iter().any(|card| card.id == *card_id)));
+    assert_eq!(deck.len(), initial_input.deck_size);
     println!(
         "{}",
         deck.iter()
@@ -146,6 +149,8 @@ fn main() {
     );
     loop {
         let turn_input = read_turn_input(initial_input.field_size_y);
+        eprintln!("turn:{}, hands:{:?}", turn_input.turn, turn_input.hands);
+        assert_eq!(turn_input.hands.len(), initial_input.hand_size);
         let action_index = rng.gen_range(0..turn_input.valid_actions.len());
         // TODO: 行動を実装
         println!("{}", turn_input.valid_actions[action_index]);
