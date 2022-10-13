@@ -157,15 +157,18 @@ impl FieldShape {
             FieldSquareType::Special { player_id },
         ])
     }
-    pub fn to_string(&self) -> String {
-        self.squares
+}
+impl std::fmt::Display for FieldShape {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let s = self
+            .squares
             .iter()
             .map(|row| String::from_iter(row.iter().map(|c| c.to_char())))
             .collect::<Vec<String>>()
-            .join("\n")
+            .join("\n");
+        write!(f, "{}", s)
     }
 }
-
 #[derive(Eq, PartialEq, Debug, Clone, Hash)]
 pub struct CardShape {
     pub height: usize,
@@ -183,13 +186,6 @@ impl CardShape {
             width: squares[0].len(),
             squares,
         }
-    }
-    pub fn to_string(&self) -> String {
-        self.squares
-            .iter()
-            .map(|row| String::from_iter(row.iter().map(|c| c.to_char())))
-            .collect::<Vec<String>>()
-            .join("\n")
     }
     pub fn trim(seed: &CardShape) -> CardShape {
         let mut min_y = seed.height;
@@ -269,6 +265,17 @@ impl CardShape {
             width,
             squares,
         }
+    }
+}
+impl std::fmt::Display for CardShape {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let s = self
+            .squares
+            .iter()
+            .map(|row| String::from_iter(row.iter().map(|c| c.to_char())))
+            .collect::<Vec<String>>()
+            .join("\n");
+        write!(f, "{}", s)
     }
 }
 
@@ -869,8 +876,8 @@ impl State {
         }
 
         // 使ったカードを捨てる
-        for i in 0..self.players.len() {
-            let card_id = match actions[i] {
+        for (i, &action) in actions.iter().enumerate() {
+            let card_id = match action {
                 Action::Pass { card_id } => card_id,
                 Action::Put {
                     card_id,
