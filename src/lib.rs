@@ -1,5 +1,5 @@
-use log::{debug, error, info};
-use std::{collections::HashSet, convert::From};
+use log::{debug, error};
+use std::convert::From;
 use std::{
     collections::{HashMap, VecDeque},
     fmt::{Display, Formatter},
@@ -238,11 +238,11 @@ impl CardShape {
         }
         unreachable!()
     }
-    fn count_squares(&self, CardSquareTypes: &[CardSquareType]) -> usize {
+    fn count_squares(&self, card_square_types: &[CardSquareType]) -> usize {
         let mut count = 0;
         for i in 0..self.height {
             for j in 0..self.width {
-                if CardSquareTypes.contains(&self.squares[i][j]) {
+                if card_square_types.contains(&self.squares[i][j]) {
                     count += 1;
                 }
             }
