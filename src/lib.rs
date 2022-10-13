@@ -1,4 +1,5 @@
-use std::convert::From;
+use log::{debug, error, info};
+use std::{collections::HashSet, convert::From};
 use std::{
     collections::{HashMap, VecDeque},
     fmt::{Display, Formatter},
@@ -74,7 +75,7 @@ impl From<char> for FieldSquareType {
             '#' => FieldSquareType::Block,
             '.' => FieldSquareType::Empty,
             _ => {
-                eprintln!("invalid input {}", item);
+                error!("invalid input {}", item);
                 unreachable!()
             }
         }
@@ -108,7 +109,7 @@ impl From<char> for CardSquareType {
             'Y' => CardSquareType::Special,
             '.' => CardSquareType::Empty,
             _ => {
-                eprintln!("invalid input {}", item);
+                error!("invalid input {}", item);
                 unreachable!()
             }
         }
@@ -318,7 +319,7 @@ impl From<char> for Direction {
             'R' => Self::Right,
             'L' => Self::Left,
             _ => {
-                eprintln!("Direction from error by: {}", c);
+                error!("Direction from error by: {}", c);
                 unreachable!()
             }
         }
@@ -380,6 +381,23 @@ impl From<&str> for Action {
             _ => unreachable!(),
         }
     }
+}
+
+fn get_cursor(
+    reference_point_y: usize,
+    reference_point_x: usize,
+    target_y: usize,
+    target_x: usize,
+    i: usize,
+    j: usize,
+) -> Option<(usize, usize)> {
+    // 基準点(ry,rx)が(ty,tx)に置かれるので左下の座標がマイナスになる可能性がある
+    if target_y + i < reference_point_y || target_x + j < reference_point_x {
+        return None;
+    }
+    let cy = target_y + i - reference_point_y;
+    let cx = target_x + j - reference_point_x;
+    Some((cy, cx))
 }
 
 pub struct PlayerState {
@@ -451,7 +469,7 @@ impl State {
         self.is_done(env) && self.field.count_player(0) == self.field.count_player(1)
     }
     pub fn is_done(&self, env: &Environment) -> bool {
-        self.turn == env.max_turn + 1
+        self.turn > env.max_turn
     }
     fn is_valid_action(
         &self,
@@ -472,45 +490,47 @@ impl State {
                     Direction::Down => card.shape.rotate().rotate(),
                     Direction::Left => card.shape.rotate().rotate().rotate(),
                 };
-                // 置けるのか？
+                // 1. 既存の自分のマスに接しているか
+                // 2. 全ての追加するマスがフィールド内で空白マスに重なる
                 let mut is_adjacent = false;
                 let (ry, rx) = shape.find_reference_point(0);
                 for i in 0..card.shape.height {
                     for j in 0..card.shape.width {
-                        match card.shape.squares[i][j] {
-                            CardSquareType::Colored | CardSquareType::Special => {
-                                // 基準点(ry,rx)が(y,x)に置かれるので左下の座標がマイナスになる可能性がある
-                                if y + i < ry || x + j < rx {
-                                    return false;
-                                }
-                                let cy = y + i - ry;
-                                let cx = x + j - rx;
-                                if self.field.height <= cy || self.field.width <= cx {
-                                    return false;
-                                }
-                                if self.field.squares[cy][cx] != FieldSquareType::Empty {
-                                    return false;
-                                }
-                                // 既存の自身のマスに隣接しているか判定する
-                                for (dy, dx) in DYDX8.iter() {
-                                    if self.field.height <= cy.wrapping_add(*dy)
-                                        || self.field.width <= cx.wrapping_add(*dx)
-                                    {
-                                        continue;
-                                    }
-                                    if let FieldSquareType::Colored { player_id: pid }
-                                    | FieldSquareType::Special { player_id: pid } = self
-                                        .field
-                                        .squares[cy.wrapping_add(*dy)][cx.wrapping_add(*dx)]
-                                    {
-                                        if pid == player_id {
-                                            is_adjacent = true;
-                                        }
-                                    }
-                                }
+                        if matches!(
+                            card.shape.squares[i][j],
+                            CardSquareType::Colored | CardSquareType::Special
+                        ) {
+                            // 基準点(ry,rx)が(y,x)に置かれるので左下の座標がマイナスになる可能性がある
+                            let cur = get_cursor(ry, rx, *y, *x, i, j);
+                            if cur.is_none() {
+                                return false;
                             }
-                            _ => {
-                                //do_nothing
+                            let (cy, cx) = cur.expect("noneはアーリーリターンしている。");
+                            if self.field.height <= cy || self.field.width <= cx {
+                                return false;
+                            }
+
+                            if self.field.squares[cy][cx] != FieldSquareType::Empty {
+                                return false;
+                            }
+                            // 既存の自身のマスに隣接しているか判定する
+                            for (dy, dx) in DYDX8.iter() {
+                                if is_adjacent {
+                                    break;
+                                }
+                                if self.field.height <= cy.wrapping_add(*dy)
+                                    || self.field.width <= cx.wrapping_add(*dx)
+                                {
+                                    continue;
+                                }
+                                if let FieldSquareType::Colored { player_id: pid }
+                                | FieldSquareType::Special { player_id: pid } =
+                                    self.field.squares[cy.wrapping_add(*dy)][cx.wrapping_add(*dx)]
+                                {
+                                    if pid == player_id {
+                                        is_adjacent = true;
+                                    }
+                                }
                             }
                         }
                     }
@@ -532,7 +552,8 @@ impl State {
                     Direction::Down => card.shape.rotate().rotate(),
                     Direction::Left => card.shape.rotate().rotate().rotate(),
                 };
-                // 置けるのか？
+                // 1. 既存の自分のスペシャルマスに接しているか
+                // 2. 全ての追加するマスがフィールド内でスペシャルマス・ブロックマス以外（空白マス・自マス・相手マス）に重なる
                 let mut is_adjacent = false;
                 let (ry, rx) = shape.find_reference_point(0);
                 for i in 0..card.shape.height {
@@ -543,14 +564,15 @@ impl State {
                         ) {
                             // 枠内＆SpecialとBlock以外＆Specialに隣接
                             // 基準点(ry,rx)が(y,x)に置かれるので左下の座標がマイナスになる可能性がある
-                            if y + i < ry || x + j < rx {
+                            let cur = get_cursor(ry, rx, *y, *x, i, j);
+                            if cur.is_none() {
                                 return false;
                             }
-                            let cy = y + i - ry;
-                            let cx = x + j - rx;
+                            let (cy, cx) = cur.expect("noneはアーリーリターンしている。");
                             if self.field.height <= cy || self.field.width <= cx {
                                 return false;
                             }
+
                             if matches!(
                                 self.field.squares[cy][cx],
                                 FieldSquareType::Special { player_id: _ } | FieldSquareType::Block
@@ -560,6 +582,9 @@ impl State {
 
                             // 既存の自身のスペシャルマスに隣接しているか判定する
                             for (dy, dx) in DYDX8.iter() {
+                                if is_adjacent {
+                                    break;
+                                }
                                 if self.field.height <= cy.wrapping_add(*dy)
                                     || self.field.width <= cx.wrapping_add(*dx)
                                 {
@@ -673,13 +698,13 @@ impl State {
                 }
             }
         }
-        action_orders.sort_by_key(|x| std::cmp::Reverse(*x));
+        action_orders.sort_by_key(|x| std::cmp::Reverse(*x)); // パワーの大きい順に行動する
 
-        // TODO: 同一powerのカードの衝突を考慮する。
+        // 同一powerのカードの衝突を考慮する。
+        let mut unfixed_squares = HashMap::<(usize, usize), usize>::new();
         for (_, action_index) in action_orders.iter() {
-            // PASS
             match actions[*action_index] {
-                Action::Pass { card_id } => {
+                Action::Pass { card_id: _ } => {
                     self.players[*action_index].special_point += 1;
                 }
                 Action::Put { card_id, dir, y, x } => {
@@ -696,23 +721,62 @@ impl State {
                     for i in 0..card.shape.height {
                         for j in 0..card.shape.width {
                             if matches!(card.shape.squares[i][j], CardSquareType::Colored) {
-                                let cy = y + i - ry;
-                                let cx = x + j - rx;
-                                self.field.squares[cy][cx] = FieldSquareType::Colored {
-                                    player_id: *action_index,
-                                };
+                                let cur = get_cursor(ry, rx, y, x, i, j);
+                                let (cy, cx) =
+                                    cur.expect("全てのマスがvalidな座標に収まることを確認済み");
+                                match self.field.squares[cy][cx] {
+                                    FieldSquareType::Empty => {
+                                        unfixed_squares.insert((cy, cx), card.power);
+                                        self.field.squares[cy][cx] = FieldSquareType::Colored {
+                                            player_id: *action_index,
+                                        };
+                                    }
+                                    FieldSquareType::Colored { player_id: _ } => {
+                                        let unfixed_square_power = unfixed_squares.get(&(cy,cx)).expect("is_valid_actionをクリアしているなら同一ターンに置かれているはず");
+                                        self.field.squares[cy][cx] =
+                                            if *unfixed_square_power == card.power {
+                                                FieldSquareType::Block
+                                            } else {
+                                                unfixed_squares.insert((cy, cx), card.power);
+                                                FieldSquareType::Colored {
+                                                    player_id: *action_index,
+                                                }
+                                            };
+                                    }
+                                    _ => { /* それ以外には置けない */ }
+                                }
                             } else if matches!(card.shape.squares[i][j], CardSquareType::Special) {
-                                let cy = y + i - ry;
-                                let cx = x + j - rx;
-                                self.field.squares[cy][cx] = FieldSquareType::Special {
-                                    player_id: *action_index,
-                                };
+                                let cur = get_cursor(ry, rx, y, x, i, j);
+                                let (cy, cx) =
+                                    cur.expect("全てのマスがvalidな座標に収まることを確認済み");
+                                match self.field.squares[cy][cx] {
+                                    FieldSquareType::Empty
+                                    | FieldSquareType::Colored { player_id: _ } => {
+                                        unfixed_squares.insert((cy, cx), card.power);
+                                        self.field.squares[cy][cx] = FieldSquareType::Special {
+                                            player_id: *action_index,
+                                        };
+                                    }
+                                    FieldSquareType::Special { player_id: _ } => {
+                                        let unfixed_square_power = unfixed_squares.get(&(cy,cx)).expect("is_valid_actionをクリアしているなら同一ターンに置かれているはず");
+                                        self.field.squares[cy][cx] =
+                                            if *unfixed_square_power == card.power {
+                                                FieldSquareType::Block
+                                            } else {
+                                                unfixed_squares.insert((cy, cx), card.power);
+                                                FieldSquareType::Special {
+                                                    player_id: *action_index,
+                                                }
+                                            };
+                                    }
+                                    _ => { /* それ以外には置けない */ }
+                                }
                             }
                         }
                     }
                 }
                 Action::SpecialPut { card_id, dir, y, x } => {
-                    eprintln!("use SpecialPut:{:?}", actions[*action_index]);
+                    debug!("use SpecialPut:{:?}", actions[*action_index]);
                     let card = cards
                         .get(&card_id)
                         .expect("all cards in deck are contained cards");
@@ -726,17 +790,76 @@ impl State {
                     for i in 0..card.shape.height {
                         for j in 0..card.shape.width {
                             if matches!(card.shape.squares[i][j], CardSquareType::Colored) {
-                                let cy = y + i - ry;
-                                let cx = x + j - rx;
-                                self.field.squares[cy][cx] = FieldSquareType::Colored {
-                                    player_id: *action_index,
-                                };
+                                let cur = get_cursor(ry, rx, y, x, i, j);
+                                let (cy, cx) =
+                                    cur.expect("全てのマスがvalidな座標に収まることを確認済み");
+                                match self.field.squares[cy][cx] {
+                                    FieldSquareType::Empty => {
+                                        unfixed_squares.insert((cy, cx), card.power);
+                                        self.field.squares[cy][cx] = FieldSquareType::Colored {
+                                            player_id: *action_index,
+                                        };
+                                    }
+                                    FieldSquareType::Colored { player_id: _ } => {
+                                        self.field.squares[cy][cx] = match unfixed_squares
+                                            .get(&(cy, cx))
+                                        {
+                                            Some(unfixed_square_power) => {
+                                                // 同ターン、同パワー
+                                                if *unfixed_square_power == card.power {
+                                                    FieldSquareType::Block
+                                                } else {
+                                                    // 同ターン、高パワー
+                                                    unfixed_squares.insert((cy, cx), card.power);
+                                                    FieldSquareType::Colored {
+                                                        player_id: *action_index,
+                                                    }
+                                                }
+                                            }
+                                            None => {
+                                                // 過去ターン
+                                                unfixed_squares.insert((cy, cx), card.power);
+                                                FieldSquareType::Colored {
+                                                    player_id: *action_index,
+                                                }
+                                            }
+                                        };
+                                    }
+                                    _ => { /* それ以外には置けない */ }
+                                }
                             } else if matches!(card.shape.squares[i][j], CardSquareType::Special) {
-                                let cy = y + i - ry;
-                                let cx = x + j - rx;
-                                self.field.squares[cy][cx] = FieldSquareType::Special {
-                                    player_id: *action_index,
-                                };
+                                let cur = get_cursor(ry, rx, y, x, i, j);
+                                let (cy, cx) =
+                                    cur.expect("全てのマスがvalidな座標に収まることを確認済み");
+                                match self.field.squares[cy][cx] {
+                                    FieldSquareType::Empty
+                                    | FieldSquareType::Colored { player_id: _ } => {
+                                        unfixed_squares.insert((cy, cx), card.power);
+                                        self.field.squares[cy][cx] = FieldSquareType::Special {
+                                            player_id: *action_index,
+                                        };
+                                    }
+                                    FieldSquareType::Special { player_id: _ } => {
+                                        self.field.squares[cy][cx] = match unfixed_squares
+                                            .get(&(cy, cx))
+                                        {
+                                            Some(unfixed_square_power) => {
+                                                // 同ターン、同パワー
+                                                if *unfixed_square_power == card.power {
+                                                    FieldSquareType::Block
+                                                } else {
+                                                    // 同ターン、高パワー
+                                                    unfixed_squares.insert((cy, cx), card.power);
+                                                    FieldSquareType::Colored {
+                                                        player_id: *action_index,
+                                                    }
+                                                }
+                                            }
+                                            None => unreachable!(),
+                                        };
+                                    }
+                                    _ => { /* それ以外には置けない */ }
+                                }
                             }
                         }
                     }
@@ -776,7 +899,7 @@ impl State {
         // 次のターン
         self.turn += 1;
         // 新しいカードを引く
-        if self.turn < env.max_turn {
+        if !self.is_done(env) {
             for i in 0..self.players.len() {
                 let new_card_id = self.players[i]
                     .deck
@@ -883,5 +1006,11 @@ mod tests {
         let trimmed = CardShape::trim(&big);
         let expected = CardShape::new("yyyyy\nyyyYy\n.y...\ny....");
         assert_eq!(trimmed, expected);
+    }
+    #[test]
+    fn test_get_cursor() {
+        assert_eq!(get_cursor(0, 0, 1, 2, 3, 7), Some((4, 9)));
+        assert_eq!(get_cursor(4, 0, 1, 2, 3, 7), Some((0, 9)));
+        assert_eq!(get_cursor(4, 10, 1, 2, 3, 7), None);
     }
 }
