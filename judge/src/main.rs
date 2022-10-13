@@ -44,8 +44,8 @@ struct GameInfo {
 }
 fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<String>) -> GameInfo {
     let mut bot_processes = vec![];
-    for i in 0..2 {
-        let bot_process = match Command::new(commands[i].clone())
+    for command in commands.iter() {
+        let bot_process = match Command::new(command.clone())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
@@ -63,11 +63,7 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
         .map(|card| {
             format!(
                 "{} {} {} {}\n{}",
-                card.id,
-                card.cost,
-                card.shape.height,
-                card.shape.width,
-                card.shape.to_string()
+                card.id, card.cost, card.shape.height, card.shape.width, card.shape
             )
         })
         .collect::<Vec<String>>()
@@ -80,16 +76,15 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
         max_turn = env.max_turn,
         stage_size_y = field.shape.height,
         stage_size_x = field.shape.width,
-        stage_shape = field.shape.to_string(),
+        stage_shape = field.shape,
         number_of_cards = cards.len(),
         cards_info = cards_info
     );
-    for i in 0..2 {
-        let mut stdin = bot_processes[i].stdin.as_ref().unwrap();
+    for bot_process in bot_processes.iter() {
+        let mut stdin = bot_process.stdin.as_ref().unwrap();
 
-        match stdin.write_all(initial_input.as_bytes()) {
-            Err(why) => panic!("couldn't write to bot stdin: {}", why),
-            Ok(_) => {}
+        if let Err(why) = stdin.write_all(initial_input.as_bytes()) {
+            panic!("couldn't write to bot stdin: {}", why);
         }
         stdin.flush().unwrap_or(());
     }
@@ -100,13 +95,13 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
     }
 
     let mut decks = vec![];
-    for i in 0..2 {
-        let stdout = bot_processes[i].stdout.as_mut().expect("");
+    for (player_id, bot_process) in bot_processes.iter_mut().enumerate() {
+        let stdout = bot_process.stdout.as_mut().expect("");
         let mut reader = BufReader::new(stdout);
         let mut s = String::new();
         match reader.read_line(&mut s) {
             Err(why) => panic!("couldn't read bot stdout: {}", why),
-            Ok(_) => debug!("bot {} deck: {}", i, s),
+            Ok(_) => debug!("bot {} deck: {}", player_id, s),
         };
         let mut deck: Vec<usize> = s
             .trim()
@@ -126,7 +121,7 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
     while !state.is_done(env) {
         let mut actions = vec![];
 
-        for player_id in 0..2 {
+        for (player_id, bot_process) in bot_processes.iter_mut().enumerate() {
             let action_candidates = state.generate_valid_actions(&card_catalog, player_id);
             debug!(
                 "turn:{}, player_id:{}, n_action:{}",
@@ -143,7 +138,7 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
                     .map(|p| p.special_point.to_string())
                     .collect::<Vec<String>>()
                     .join(" "),
-                stage_shape = field.shape.to_string(),
+                stage_shape = field.shape,
                 hands = state.players[player_id]
                     .hands
                     .iter()
@@ -153,16 +148,15 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
                     n_action = action_candidates.len(),
                     action_candidates = action_candidates.iter().map(|a| a.to_string()).collect::<Vec<String>>().join("\n")
                 );
-            let mut stdin = bot_processes[player_id].stdin.as_ref().unwrap();
+            let mut stdin = bot_process.stdin.as_ref().unwrap();
 
-            match stdin.write_all(turn_input.as_bytes()) {
-                Err(why) => panic!("couldn't write to bot stdin: {}", why),
-                Ok(_) => {}
+            if let Err(why) = stdin.write_all(turn_input.as_bytes()) {
+                panic!("couldn't write to bot stdin: {}", why);
             }
             stdin.flush().unwrap_or(());
 
             // TODO: botから入力を受け取る
-            let stdout = bot_processes[player_id].stdout.as_mut().expect("");
+            let stdout = bot_process.stdout.as_mut().expect("");
             let mut reader = BufReader::new(stdout);
             let mut s = String::new();
             match reader.read_line(&mut s) {
