@@ -1,4 +1,4 @@
-use crate::{Card, CardId, CardShape, FieldShape};
+use crate::{Card, CardShape, FieldShape};
 use std::io;
 
 #[macro_export]
