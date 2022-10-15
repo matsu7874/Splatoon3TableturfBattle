@@ -83,6 +83,15 @@ fn read_initial_input() -> InitialInput {
     }
 }
 
+fn read_hands() -> Vec<usize> {
+    let chunks = read_line!();
+    let hands = chunks
+        .iter()
+        .map(|s| s.parse::<usize>().unwrap())
+        .collect::<Vec<usize>>();
+    hands
+}
+
 struct TurnInput {
     turn: usize,
     special_points: Vec<usize>,
@@ -107,11 +116,7 @@ fn read_turn_input(field_size_y: usize) -> TurnInput {
     }
     let field = FieldShape::new(&rows.join("\n"));
 
-    let chunks = read_line!();
-    let hands = chunks
-        .iter()
-        .map(|s| s.parse::<usize>().unwrap())
-        .collect::<Vec<usize>>();
+    let hands = read_hands();
     let chunks = read_line!();
     let n_actions = parse_input!(chunks[0], usize);
     let mut valid_actions = vec![];
@@ -147,6 +152,15 @@ fn main() {
             .collect::<Vec<String>>()
             .join(" ")
     );
+
+    // マリガン判定
+    let hands = read_hands();
+    if hands.contains(&deck[0]) {
+        println!("PASS");
+    } else {
+        println!("MULLIGAN");
+    }
+
     loop {
         let turn_input = read_turn_input(initial_input.field_size_y);
         assert_eq!(turn_input.hands.len(), initial_input.hand_size);

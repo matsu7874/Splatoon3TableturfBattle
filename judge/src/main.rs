@@ -84,7 +84,7 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
         let mut stdin = bot_process.stdin.as_ref().unwrap();
 
         if let Err(why) = stdin.write_all(initial_input.as_bytes()) {
-            panic!("couldn't write to bot stdin: {}", why);
+            panic!("couldn't write to player stdin: {}", why);
         }
         stdin.flush().unwrap_or(());
     }
@@ -100,8 +100,8 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
         let mut reader = BufReader::new(stdout);
         let mut s = String::new();
         match reader.read_line(&mut s) {
-            Err(why) => panic!("couldn't read bot stdout: {}", why),
-            Ok(_) => debug!("bot {} deck: {}", player_id, s),
+            Err(why) => panic!("couldn't read player stdout: {}", why),
+            Ok(_) => debug!("player {} deck: {}", player_id, s),
         };
         let mut deck: Vec<usize> = s
             .trim()
@@ -113,11 +113,41 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
             })
             .collect();
         deck.shuffle(&mut rng);
+
         decks.push(deck);
     }
 
-    // 毎ターンの繰り返し処理
+    // マリガン
+    for (player_id, bot_process) in bot_processes.iter_mut().enumerate() {
+        let hands = format!(
+            "{}\n",
+            decks[player_id][0..env.hand_size]
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<String>>()
+                .join(" "),
+        );
+        let mut stdin = bot_process.stdin.as_ref().unwrap();
+        if let Err(why) = stdin.write_all(hands.as_bytes()) {
+            panic!("couldn't write to player stdin: {}", why);
+        }
+        stdin.flush().unwrap_or(());
+
+        let stdout = bot_process.stdout.as_mut().expect("");
+        let mut reader = BufReader::new(stdout);
+        let mut s = String::new();
+        match reader.read_line(&mut s) {
+            Err(why) => panic!("couldn't read player stdout: {}", why),
+            Ok(_) => debug!("player {} mulligan: {}", player_id, s),
+        };
+        if s == "MULLIGAN" {
+            debug!("player {} mulliganed", player_id);
+            decks[player_id].shuffle(&mut rng);
+        }
+    }
+
     let mut state = State::new(env, &card_catalog, field, &decks[0], &decks[1]);
+    // 毎ターンの繰り返し処理
     while !state.is_done(env) {
         let mut actions = vec![];
 
@@ -151,7 +181,7 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
             let mut stdin = bot_process.stdin.as_ref().unwrap();
 
             if let Err(why) = stdin.write_all(turn_input.as_bytes()) {
-                panic!("couldn't write to bot stdin: {}", why);
+                panic!("couldn't write to player stdin: {}", why);
             }
             stdin.flush().unwrap_or(());
 
@@ -160,8 +190,8 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
             let mut reader = BufReader::new(stdout);
             let mut s = String::new();
             match reader.read_line(&mut s) {
-                Err(why) => panic!("couldn't read bot stdout: {}", why),
-                Ok(_) => debug!("bot {} action: {}", player_id, s),
+                Err(why) => panic!("couldn't read player stdout: {}", why),
+                Ok(_) => debug!("player {} action: {}", player_id, s),
             };
             let action = Action::from(s.as_ref());
             actions.push(action);
