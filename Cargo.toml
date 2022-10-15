@@ -10,11 +10,15 @@ path = "judge/src/main.rs"
 [[bin]]
 name= "bot"
 path = "bot/src/main.rs"
+[[bin]]
+name= "record_player"
+path = "record_player/src/main.rs"
 
 [workspace]
 members = [
     "bot",
     "judge",
+    "record_player",
 ]
 
 [dependencies]
@@ -23,3 +27,4 @@ serde_json = "1.0.84"
 rand = "0.8.5"
 env_logger = "0.9.1"
 log = "0.4.17"
+svg = "0.10.0"
