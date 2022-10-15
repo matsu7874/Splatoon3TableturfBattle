@@ -18,14 +18,7 @@ impl CardJson {
     fn to_card(&self) -> Card {
         let seed = CardShape::new(&self.squares);
         let shape = CardShape::trim(&seed);
-        let power = shape.count_colored_squares();
-        Card {
-            id: self.id,
-            name: self.name.clone(),
-            cost: self.cost,
-            power,
-            shape,
-        }
+        Card::new(self.id, &self.name, self.cost, shape)
     }
 }
 fn load_card_catalog() -> serde_json::Result<Vec<Card>> {
@@ -146,7 +139,7 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
         }
     }
 
-    let mut state = State::new(env, &card_catalog, field, &decks[0], &decks[1]);
+    let mut state = State::new(env, &card_catalog, field, &decks);
     // 毎ターンの繰り返し処理
     while !state.is_done(env) {
         let mut actions = vec![];
@@ -227,7 +220,7 @@ fn main() {
     // 2つのプログラムと情報の受け渡しを行いゲームを進めるプログラム
     env_logger::init();
 
-    let env = Environment::new(15, 4, 12);
+    let env = Environment::new(2, 15, 4, 12);
     let cards = load_card_catalog().expect("JSON読み込みはうまくいく");
     // TODO: 別のフィールドも使えるようにする
     let field = Field::default();

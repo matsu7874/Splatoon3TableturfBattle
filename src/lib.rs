@@ -21,14 +21,16 @@ const DYDX8: [(usize, usize); 8] = [
 ];
 
 pub struct Environment {
+    pub player_size: usize,
     pub hand_size: usize,
     pub max_turn: usize,
     pub deck_size: usize,
 }
 impl Environment {
-    pub fn new(deck_size: usize, hand_size: usize, max_turn: usize) -> Self {
+    pub fn new(player_size: usize, deck_size: usize, hand_size: usize, max_turn: usize) -> Self {
         assert!(max_turn + hand_size <= deck_size + 1);
         Self {
+            player_size,
             hand_size,
             max_turn,
             deck_size,
@@ -322,6 +324,17 @@ pub struct Card {
     pub power: usize,
     pub shape: CardShape,
 }
+impl Card {
+    pub fn new(id: CardId, name: &str, cost: usize, shape: CardShape) -> Self {
+        Self {
+            id,
+            name: String::from(name),
+            cost,
+            power: shape.count_colored_squares(),
+            shape: shape,
+        }
+    }
+}
 
 impl Default for Card {
     fn default() -> Self {
@@ -476,46 +489,44 @@ impl State {
         env: &Environment,
         cards: &HashMap<CardId, &Card>,
         field: &Field,
-        yellow_deck: &Vec<CardId>,
-        blue_deck: &Vec<CardId>,
+        decks: &[Vec<CardId>],
     ) -> Self {
-        assert_eq!(yellow_deck.len(), env.deck_size);
-        assert_eq!(blue_deck.len(), env.deck_size);
-        // デッキに含まれるのはカード情報の存在するカードのみであることを検査する。
-        for card_id in yellow_deck.iter() {
-            assert!(cards.contains_key(card_id));
-        }
-        for card_id in blue_deck.iter() {
-            assert!(cards.contains_key(card_id));
-        }
-        let mut yellow_deck: VecDeque<CardId> = VecDeque::from(yellow_deck.clone());
-        let mut blue_deck: VecDeque<CardId> = VecDeque::from(blue_deck.clone());
-        let mut yellow_hands = vec![];
-        let mut blue_hands = vec![];
-        for _ in 0..env.hand_size {
-            if let Some(card_id) = yellow_deck.pop_front() {
-                yellow_hands.push(card_id);
+        for deck in decks.iter() {
+            assert_eq!(deck.len(), env.deck_size);
+            // デッキに含まれるのはカード情報の存在するカードのみであることを検査する。
+            for card_id in deck.iter() {
+                assert!(cards.contains_key(card_id));
             }
-            if let Some(card_id) = blue_deck.pop_front() {
-                blue_hands.push(card_id);
+        }
+
+        let mut cloned_decks = decks
+            .iter()
+            .map(|deck| VecDeque::from(deck.clone()))
+            .collect::<Vec<VecDeque<CardId>>>();
+
+        let mut hands = vec![];
+        for player_id in 0..env.player_size {
+            let mut hand: Vec<CardId> = vec![];
+            for _ in 0..env.hand_size {
+                if let Some(card_id) = cloned_decks[player_id].pop_front() {
+                    hand.push(card_id);
+                }
             }
+            hands.push(hand);
         }
 
         State {
             turn: 1,
             field: field.shape.clone(),
-            players: vec![
-                PlayerState {
+            players: hands
+                .into_iter()
+                .zip(cloned_decks.into_iter())
+                .map(|(hand, deck)| PlayerState {
                     special_point: 0,
-                    hands: yellow_hands,
-                    deck: yellow_deck,
-                },
-                PlayerState {
-                    special_point: 0,
-                    hands: blue_hands,
-                    deck: blue_deck,
-                },
-            ],
+                    hands: hand,
+                    deck: deck,
+                })
+                .collect::<Vec<PlayerState>>(),
         }
     }
     pub fn is_win(&self, env: &Environment, player_id: PlayerId) -> bool {
@@ -726,6 +737,49 @@ impl State {
             candidates.push(Action::Pass { card_id: *card_id });
         }
         candidates
+    }
+
+    fn activates(&mut self, putted_this_turn_squares: &[(usize, usize)]) -> Vec<usize> {
+        let mut activated_counts = vec![0; self.players.len()];
+        for (y, x) in putted_this_turn_squares {
+            for (dy, dx) in DYDX8.iter() {
+                let ny = y.wrapping_add(*dy);
+                let nx = x.wrapping_add(*dx);
+                if self.field.height <= ny || self.field.width <= nx {
+                    continue;
+                }
+                if let FieldSquareType::Special {
+                    player_id,
+                    activeted: false,
+                } = self.field.squares[ny][nx]
+                {
+                    let special_y = ny;
+                    let special_x = nx;
+                    let mut has_neighbor_empty = false;
+                    for (dy, dx) in DYDX8.iter() {
+                        if self.field.height <= special_y.wrapping_add(*dy)
+                            || self.field.width <= special_x.wrapping_add(*dx)
+                        {
+                            continue;
+                        }
+                        if matches!(
+                            self.field.squares[special_y.wrapping_add(*dy)]
+                                [special_x.wrapping_add(*dx)],
+                            FieldSquareType::Empty
+                        ) {
+                            has_neighbor_empty = true;
+                            break;
+                        }
+                    }
+                    if !has_neighbor_empty {
+                        self.players[player_id].special_point += 1;
+                        activated_counts[player_id] += 1;
+                    }
+                    self.field.squares[special_y][special_x].activate();
+                }
+            }
+        }
+        activated_counts
     }
 
     pub fn apply(&mut self, env: &Environment, cards: &HashMap<CardId, &Card>, actions: &[Action]) {
@@ -948,44 +1002,11 @@ impl State {
         }
 
         // スペシャルマスの活性化判定
-        let putted_this_turn_squares = unfixed_squares;
-        for (y, x) in putted_this_turn_squares.keys() {
-            for (dy, dx) in DYDX8.iter() {
-                let ny = y.wrapping_add(*dy);
-                let nx = x.wrapping_add(*dx);
-                if self.field.height <= ny || self.field.width <= nx {
-                    continue;
-                }
-                if let FieldSquareType::Special {
-                    player_id,
-                    activeted: false,
-                } = self.field.squares[ny][nx]
-                {
-                    let special_y = ny;
-                    let special_x = nx;
-                    let mut has_neighbor_empty = false;
-                    for (dy, dx) in DYDX8.iter() {
-                        if self.field.height <= special_y.wrapping_add(*dy)
-                            || self.field.width <= special_x.wrapping_add(*dx)
-                        {
-                            continue;
-                        }
-                        if matches!(
-                            self.field.squares[special_y.wrapping_add(*dy)]
-                                [special_x.wrapping_add(*dx)],
-                            FieldSquareType::Empty
-                        ) {
-                            has_neighbor_empty = true;
-                            break;
-                        }
-                    }
-                    if !has_neighbor_empty {
-                        self.players[player_id].special_point += 1;
-                    }
-                    self.field.squares[special_y][special_x].activate();
-                }
-            }
-        }
+        let putted_this_turn_squares = unfixed_squares
+            .keys()
+            .cloned()
+            .collect::<Vec<(usize, usize)>>();
+        self.activates(&putted_this_turn_squares);
 
         // 使ったカードを捨てる
         for (i, &action) in actions.iter().enumerate() {
@@ -1082,6 +1103,24 @@ mod tests {
             ],
         ];
         let actual = FieldShape::new("yyyyy\nyyyYy\n.y...\ny....").squares;
+        assert_eq!(actual, expected);
+    }
+    #[test]
+    fn test_activates() {
+        let env = Environment::new(2, 1, 1, 1);
+        let card_catalog = vec![Card::new(1, "hoge", 1, CardShape::new("y"))];
+        let mut cards = HashMap::new();
+        cards.insert(1usize, &card_catalog[0]);
+        let field = Field {
+            id: 1,
+            name: "hoge".to_string(),
+            shape: FieldShape::new("YB\nbY"),
+        };
+        let mut state = State::new(&env, &cards, &field, &vec![vec![1], vec![1]]);
+        let putted_this_turn_squares = vec![(1, 0)];
+        let actual = state.activates(&putted_this_turn_squares);
+        let expected = vec![2, 1];
+        eprintln!("{}", state.field);
         assert_eq!(actual, expected);
     }
     #[test]
