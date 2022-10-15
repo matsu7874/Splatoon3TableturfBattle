@@ -331,7 +331,7 @@ impl Card {
             name: String::from(name),
             cost,
             power: shape.count_colored_squares(),
-            shape: shape,
+            shape,
         }
     }
 }
@@ -524,7 +524,7 @@ impl State {
                 .map(|(hand, deck)| PlayerState {
                     special_point: 0,
                     hands: hand,
-                    deck: deck,
+                    deck,
                 })
                 .collect::<Vec<PlayerState>>(),
         }

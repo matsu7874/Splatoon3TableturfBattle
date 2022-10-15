@@ -149,7 +149,7 @@ fn format_turn_input(
     state: &mut State,
     player_id: usize,
 ) -> String {
-    let action_candidates = state.generate_valid_actions(&card_catalog, player_id);
+    let action_candidates = state.generate_valid_actions(card_catalog, player_id);
     debug!(
         "turn:{}, player_id:{}, n_action:{}",
         state.turn,
@@ -212,7 +212,7 @@ fn game_loop(
         actions.push(action);
     }
 
-    state.apply(env, &card_catalog, &actions);
+    state.apply(env, card_catalog, &actions);
 }
 
 fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: &[&str]) -> GameInfo {
@@ -274,7 +274,7 @@ fn main() {
             &env,
             &cards,
             &field,
-            &vec!["target/release/bot", "target/release/bot"],
+            &["target/release/bot", "target/release/bot"],
         );
         if let Some(winner) = result.winner {
             total_wins[winner] += 1;
