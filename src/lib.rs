@@ -38,8 +38,13 @@ impl Environment {
 
 #[derive(Eq, PartialEq, Debug, Clone, Copy, Hash)]
 pub enum FieldSquareType {
-    Colored { player_id: PlayerId },
-    Special { player_id: PlayerId },
+    Colored {
+        player_id: PlayerId,
+    },
+    Special {
+        player_id: PlayerId,
+        activeted: bool,
+    },
     Block,
     Empty,
 }
@@ -53,7 +58,10 @@ impl FieldSquareType {
                     'b'
                 }
             }
-            FieldSquareType::Special { player_id } => {
+            FieldSquareType::Special {
+                player_id,
+                activeted: _,
+            } => {
                 if *player_id == 0 {
                     'Y'
                 } else {
@@ -64,14 +72,34 @@ impl FieldSquareType {
             FieldSquareType::Empty => '.',
         }
     }
+    fn activate(&mut self) {
+        if let Self::Special {
+            player_id,
+            activeted: false,
+        } = self
+        {
+            *self = Self::Special {
+                player_id: *player_id,
+                activeted: true,
+            };
+        } else {
+            unreachable!();
+        }
+    }
 }
 impl From<char> for FieldSquareType {
     fn from(item: char) -> Self {
         match item {
             'y' => FieldSquareType::Colored { player_id: 0 },
-            'Y' => FieldSquareType::Special { player_id: 0 },
+            'Y' => FieldSquareType::Special {
+                player_id: 0,
+                activeted: false,
+            },
             'b' => FieldSquareType::Colored { player_id: 1 },
-            'B' => FieldSquareType::Special { player_id: 1 },
+            'B' => FieldSquareType::Special {
+                player_id: 1,
+                activeted: false,
+            },
             '#' => FieldSquareType::Block,
             '.' => FieldSquareType::Empty,
             _ => {
@@ -154,7 +182,14 @@ impl FieldShape {
     pub fn count_player(&self, player_id: PlayerId) -> usize {
         self.count_squares(&[
             FieldSquareType::Colored { player_id },
-            FieldSquareType::Special { player_id },
+            FieldSquareType::Special {
+                player_id,
+                activeted: true,
+            },
+            FieldSquareType::Special {
+                player_id,
+                activeted: false,
+            },
         ])
     }
 }
@@ -350,6 +385,25 @@ pub enum Action {
         x: usize,
     },
 }
+impl Action {
+    fn get_card_id(&self) -> CardId {
+        match self {
+            Action::Pass { card_id } => *card_id,
+            Action::Put {
+                card_id,
+                dir: _,
+                y: _,
+                x: _,
+            } => *card_id,
+            Action::SpecialPut {
+                card_id,
+                dir: _,
+                y: _,
+                x: _,
+            } => *card_id,
+        }
+    }
+}
 impl std::fmt::Display for Action {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         let s = match self {
@@ -531,7 +585,10 @@ impl State {
                                     continue;
                                 }
                                 if let FieldSquareType::Colored { player_id: pid }
-                                | FieldSquareType::Special { player_id: pid } =
+                                | FieldSquareType::Special {
+                                    player_id: pid,
+                                    activeted: _,
+                                } =
                                     self.field.squares[cy.wrapping_add(*dy)][cx.wrapping_add(*dx)]
                                 {
                                     if pid == player_id {
@@ -582,7 +639,10 @@ impl State {
 
                             if matches!(
                                 self.field.squares[cy][cx],
-                                FieldSquareType::Special { player_id: _ } | FieldSquareType::Block
+                                FieldSquareType::Special {
+                                    player_id: _,
+                                    activeted: _
+                                } | FieldSquareType::Block
                             ) {
                                 return false;
                             }
@@ -597,7 +657,10 @@ impl State {
                                 {
                                     continue;
                                 }
-                                if let FieldSquareType::Special { player_id: pid } =
+                                if let FieldSquareType::Special {
+                                    player_id: pid,
+                                    activeted: _,
+                                } =
                                     self.field.squares[cy.wrapping_add(*dy)][cx.wrapping_add(*dx)]
                                 {
                                     if pid == player_id {
@@ -762,9 +825,13 @@ impl State {
                                         unfixed_squares.insert((cy, cx), card.power);
                                         self.field.squares[cy][cx] = FieldSquareType::Special {
                                             player_id: *action_index,
+                                            activeted: false,
                                         };
                                     }
-                                    FieldSquareType::Special { player_id: _ } => {
+                                    FieldSquareType::Special {
+                                        player_id: _,
+                                        activeted: _,
+                                    } => {
                                         let unfixed_square_power = unfixed_squares.get(&(cy,cx)).expect("is_valid_actionをクリアしているなら同一ターンに置かれているはず");
                                         self.field.squares[cy][cx] =
                                             if *unfixed_square_power == card.power {
@@ -773,6 +840,7 @@ impl State {
                                                 unfixed_squares.insert((cy, cx), card.power);
                                                 FieldSquareType::Special {
                                                     player_id: *action_index,
+                                                    activeted: false,
                                                 }
                                             };
                                     }
@@ -844,9 +912,13 @@ impl State {
                                         unfixed_squares.insert((cy, cx), card.power);
                                         self.field.squares[cy][cx] = FieldSquareType::Special {
                                             player_id: *action_index,
+                                            activeted: false,
                                         };
                                     }
-                                    FieldSquareType::Special { player_id: _ } => {
+                                    FieldSquareType::Special {
+                                        player_id: _,
+                                        activeted: _,
+                                    } => {
                                         self.field.squares[cy][cx] = match unfixed_squares
                                             .get(&(cy, cx))
                                         {
@@ -875,23 +947,49 @@ impl State {
             }
         }
 
+        // スペシャルマスの活性化判定
+        let putted_this_turn_squares = unfixed_squares;
+        for (y, x) in putted_this_turn_squares.keys() {
+            for (dy, dx) in DYDX8.iter() {
+                let ny = y.wrapping_add(*dy);
+                let nx = x.wrapping_add(*dx);
+                if self.field.height <= ny || self.field.width <= nx {
+                    continue;
+                }
+                if let FieldSquareType::Special {
+                    player_id,
+                    activeted: false,
+                } = self.field.squares[ny][nx]
+                {
+                    let special_y = ny;
+                    let special_x = nx;
+                    let mut has_neighbor_empty = false;
+                    for (dy, dx) in DYDX8.iter() {
+                        if self.field.height <= special_y.wrapping_add(*dy)
+                            || self.field.width <= special_x.wrapping_add(*dx)
+                        {
+                            continue;
+                        }
+                        if matches!(
+                            self.field.squares[special_y.wrapping_add(*dy)]
+                                [special_x.wrapping_add(*dx)],
+                            FieldSquareType::Empty
+                        ) {
+                            has_neighbor_empty = true;
+                            break;
+                        }
+                    }
+                    if !has_neighbor_empty {
+                        self.players[player_id].special_point += 1;
+                    }
+                    self.field.squares[special_y][special_x].activate();
+                }
+            }
+        }
+
         // 使ったカードを捨てる
         for (i, &action) in actions.iter().enumerate() {
-            let card_id = match action {
-                Action::Pass { card_id } => card_id,
-                Action::Put {
-                    card_id,
-                    dir: _,
-                    y: _,
-                    x: _,
-                } => card_id,
-                Action::SpecialPut {
-                    card_id,
-                    dir: _,
-                    y: _,
-                    x: _,
-                } => card_id,
-            };
+            let card_id = action.get_card_id();
             let mut index = 0;
             for (j, &v) in self.players[i].hands.iter().enumerate() {
                 if v == card_id {
@@ -903,6 +1001,7 @@ impl State {
             assert_eq!(self.players[i].hands[index], card_id);
             self.players[i].hands.remove(index);
         }
+
         // 次のターン
         self.turn += 1;
         // 新しいカードを引く
@@ -961,7 +1060,10 @@ mod tests {
                 FieldSquareType::Colored { player_id: 0 },
                 FieldSquareType::Colored { player_id: 0 },
                 FieldSquareType::Colored { player_id: 0 },
-                FieldSquareType::Special { player_id: 0 },
+                FieldSquareType::Special {
+                    player_id: 0,
+                    activeted: false,
+                },
                 FieldSquareType::Colored { player_id: 0 },
             ],
             vec![
