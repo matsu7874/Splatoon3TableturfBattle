@@ -1,12 +1,12 @@
 use log::{debug, info};
 use rand::{rngs::ThreadRng, seq::SliceRandom};
 use serde::{Deserialize, Serialize};
-use std::{io::prelude::*, path::Path};
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use std::{collections::HashMap, process::Child};
+use std::{io::prelude::*, path::Path};
 use tableturfbattle::{
-    Action, Card, CardShape, CardId, Environment, Field, MulliganAction, PlayerId, State,
+    Action, Card, CardId, CardShape, Environment, Field, MulliganAction, PlayerId, State,
 };
 
 #[derive(Serialize, Deserialize)]
@@ -319,8 +319,9 @@ fn main() {
     env_logger::init();
 
     // let env = Environment::new(2, 15, 4, 12, false);
-    let env = Environment::new(2, 10, 4, 6, true);
-    let cards = load_card_catalog("resources/card_catalog_sample.json").expect("JSON読み込みはうまくいく");
+    let env = Environment::new(2, 20, 4, 17, true);
+    let cards =
+        load_card_catalog("resources/card_catalog_sample.json").expect("JSON読み込みはうまくいく");
     // TODO: 別のフィールドも使えるようにする
     let field = Field::default();
     let result = exec_game(

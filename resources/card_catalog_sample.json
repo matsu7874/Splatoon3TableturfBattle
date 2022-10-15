@@ -3,7 +3,7 @@
         "id": 1,
         "name": "S",
         "cost": 5,
-        "squares": "..yy....\n.y..Y...\n.y......\n..yyyy..\n......y.\n...y..y.\n....yy.."
+        "squares": "..yy....\n.y..Y...\n.y......\n..yyyy..\n......y.\n...Y..y.\n....yy.."
     },
     {
         "id": 2,
