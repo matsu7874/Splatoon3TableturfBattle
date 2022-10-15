@@ -1,0 +1,56 @@
+[
+    {
+        "id": 1,
+        "name": "S",
+        "cost": 5,
+        "squares": "..yy....\n.y..Y...\n.y......\n..yyyy..\n......y.\n...y..y.\n....yy.."
+    },
+    {
+        "id": 2,
+        "name": "A",
+        "cost": 5,
+        "squares": "...yy...\n..y..Y..\n.yyyyyy.\ny......y\n........"
+    },
+    {
+        "id": 3,
+        "name": "M",
+        "cost": 5,
+        "squares": "y.....y\nyy...Yy\ny.y.y.y\ny..y..y\n......."
+    },
+    {
+        "id": 11,
+        "name": "P",
+        "cost": 4,
+        "squares": "........\n.Yyyyy..\n.y....y.\n.yyyyy..\n.y......\n.y......"
+    },
+    {
+        "id": 23,
+        "name": "L",
+        "cost": 3,
+        "squares": ".y......\n.y......\n.y......\n.Yyyy..."
+    },
+    {
+        "id": 34,
+        "name": "E",
+        "cost": 3,
+        "squares": "..yy....\n.y..Y...\n.y......\n..yyyy..\n......y.\n...y..y.\n....yy..\n........"
+    },
+    {
+        "id": 100,
+        "name": "!",
+        "cost": 2,
+        "squares": "y\ny\ny\ny\n.\nY"
+    },
+    {
+        "id": 101,
+        "name": "!",
+        "cost": 1,
+        "squares": "Y"
+    },
+    {
+        "id": 102,
+        "name": "!",
+        "cost": 1,
+        "squares": "Y\ny"
+    }
+]

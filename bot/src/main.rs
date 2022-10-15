@@ -22,9 +22,11 @@ macro_rules! parse_input {
 }
 
 struct InitialInput {
+    player_size: usize,
     deck_size: usize,
     hand_size: usize,
     max_turn: usize,
+    is_deplicated_pick_enabled:bool,
     field_size_y: usize,
     field_size_x: usize,
     field: FieldShape,
@@ -32,9 +34,11 @@ struct InitialInput {
 }
 fn read_initial_input() -> InitialInput {
     let chunks = read_line!();
-    let deck_size = parse_input!(chunks[0], usize);
-    let hand_size = parse_input!(chunks[1], usize);
-    let max_turn = parse_input!(chunks[2], usize);
+    let player_size = parse_input!(chunks[0], usize);
+    let deck_size = parse_input!(chunks[1], usize);
+    let hand_size = parse_input!(chunks[2], usize);
+    let max_turn = parse_input!(chunks[3], usize);
+    let is_deplicated_pick_enabled = parse_input!(chunks[4], usize);
 
     let chunks = read_line!();
     let field_size_y = parse_input!(chunks[0], usize);
@@ -73,9 +77,11 @@ fn read_initial_input() -> InitialInput {
     }
 
     InitialInput {
+        player_size,
         deck_size,
         hand_size,
         max_turn,
+        is_deplicated_pick_enabled:is_deplicated_pick_enabled==1 ,
         field_size_y,
         field_size_x,
         field,
@@ -133,18 +139,34 @@ fn read_turn_input(field_size_y: usize) -> TurnInput {
     }
 }
 
+const STARTER_DECK:[CardId; 15] = [
+    6, 13, 22, 28, 40, 34, 45, 52, 55, 56, 159, 137, 141, 103, 92,
+];
 fn main() {
     let mut rng = rand::thread_rng();
+    println!("matsu784_bot");//bot名
 
     let initial_input = read_initial_input();
     // スターターデッキ
-    let deck = [
-        6, 13, 22, 28, 40, 34, 45, 52, 55, 56, 159, 137, 141, 103, 92,
-    ];
+    let deck = if STARTER_DECK.iter().all(|card_id| initial_input.cards.iter().any(|card| card.id == *card_id)){
+        Vec::from(STARTER_DECK)
+    } else{
+        let mut deck = vec![];
+        if initial_input.is_deplicated_pick_enabled{
+            for _ in 0..initial_input.deck_size{
+                deck.push(initial_input.cards[rng.gen_range(0..initial_input.cards.len())].id);
+            }
+        }else{
+            deck = initial_input.cards.iter().take(initial_input.deck_size).map(|card| card.id).collect::<Vec<CardId>>();
+        }
+        deck
+    };
+    // 全てのカードがカードカタログに存在することを検証
     assert!(deck
         .iter()
         .all(|card_id| initial_input.cards.iter().any(|card| card.id == *card_id)));
     assert_eq!(deck.len(), initial_input.deck_size);
+    // デッキを出力
     println!(
         "{}",
         deck.iter()
@@ -164,8 +186,9 @@ fn main() {
     loop {
         let turn_input = read_turn_input(initial_input.field_size_y);
         assert_eq!(turn_input.hands.len(), initial_input.hand_size);
+
+        // TODO: 行動を実装（ランダムにこうどうしている）
         let action_index = rng.gen_range(0..turn_input.valid_actions.len());
-        // TODO: 行動を実装
         println!("{}", turn_input.valid_actions[action_index]);
         // PASS {card_id}
         // PUT {card_id} {dir} {y} {x}

@@ -25,15 +25,17 @@ pub struct Environment {
     pub hand_size: usize,
     pub max_turn: usize,
     pub deck_size: usize,
+    pub is_deplicated_pick_enabled: bool,
 }
 impl Environment {
-    pub fn new(player_size: usize, deck_size: usize, hand_size: usize, max_turn: usize) -> Self {
+    pub fn new(player_size: usize, deck_size: usize, hand_size: usize, max_turn: usize, is_deplicated_pick_enabled:bool) -> Self {
         assert!(max_turn + hand_size <= deck_size + 1);
         Self {
             player_size,
             hand_size,
             max_turn,
             deck_size,
+            is_deplicated_pick_enabled,
         }
     }
 }
@@ -226,9 +228,9 @@ impl CardShape {
     }
     pub fn trim(seed: &CardShape) -> CardShape {
         let mut min_y = seed.height;
-        let mut max_y = 1;
+        let mut max_y = 0;
         let mut min_x = seed.width;
-        let mut max_x = 1;
+        let mut max_x = 0;
         for i in 0..seed.height {
             for j in 0..seed.width {
                 if matches!(
@@ -380,6 +382,31 @@ impl From<char> for Direction {
         }
     }
 }
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, PartialOrd)]
+pub enum MulliganAction {
+    Pass,
+    Mulligan,
+}
+impl std::fmt::Display for MulliganAction {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let s = match self {
+            Self::Pass => "PASS",
+            Self::Mulligan => "MULLIGAN",
+        };
+        write!(f, "{}", s)
+    }
+}
+impl From<&str> for MulliganAction {
+    fn from(s: &str) -> Self {
+        match s.trim() {
+            "PASS" => Self::Pass,
+            "MULLIGAN" => Self::Mulligan,
+            _ => unreachable!(),
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, Debug, Clone, Copy, PartialOrd)]
 pub enum Action {
     Pass {
