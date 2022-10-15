@@ -1,10 +1,10 @@
 use log::{debug, info};
-use rand::seq::SliceRandom;
+use rand::{rngs::ThreadRng, seq::SliceRandom};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::io::prelude::*;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
+use std::{collections::HashMap, process::Child};
+use std::{io::prelude::*};
 use tableturfbattle::{Action, Card, CardShape, Environment, Field, State};
 
 #[derive(Serialize, Deserialize)]
@@ -35,7 +35,7 @@ struct GameInfo {
     winner: Option<usize>,
     n_squares: Vec<usize>,
 }
-fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<String>) -> GameInfo {
+fn lunch_bots(commands: &[&str]) -> Vec<Child> {
     let mut bot_processes = vec![];
     for command in commands.iter() {
         let bot_process = match Command::new(command.clone())
@@ -48,9 +48,9 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
         };
         bot_processes.push(bot_process);
     }
-
-    let mut rng = rand::thread_rng();
-
+    bot_processes
+}
+fn format_initial_input(env: &Environment, cards: &[Card], field: &Field) -> String {
     let cards_info = cards
         .iter()
         .map(|card| {
@@ -62,7 +62,7 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
         .collect::<Vec<String>>()
         .join("\n");
 
-    let initial_input = format!(
+    format!(
         "{deck_size} {hand_size} {max_turn}\n{stage_size_y} {stage_size_x}\n{stage_shape}\n{number_of_cards}\n{cards_info}\n",
         deck_size = env.deck_size,
         hand_size = env.hand_size,
@@ -72,7 +72,9 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
         stage_shape = field.shape,
         number_of_cards = cards.len(),
         cards_info = cards_info
-    );
+    )
+}
+fn print_initial_input(bot_processes: &mut Vec<Child>, initial_input: &str) {
     for bot_process in bot_processes.iter() {
         let mut stdin = bot_process.stdin.as_ref().unwrap();
 
@@ -81,12 +83,8 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
         }
         stdin.flush().unwrap_or(());
     }
-
-    let mut card_catalog = HashMap::new();
-    for card in cards {
-        card_catalog.insert(card.id, card);
-    }
-
+}
+fn read_decks(bot_processes: &mut Vec<Child>, rng: &mut ThreadRng) -> Vec<Vec<usize>> {
     let mut decks = vec![];
     for (player_id, bot_process) in bot_processes.iter_mut().enumerate() {
         let stdout = bot_process.stdout.as_mut().expect("");
@@ -105,12 +103,18 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
                     .expect("botを完全に信用する。TODO:ここは入力の検証が必要。")
             })
             .collect();
-        deck.shuffle(&mut rng);
+        deck.shuffle(rng);
 
         decks.push(deck);
     }
-
-    // マリガン
+    decks
+}
+fn check_mulligan(
+    env: &Environment,
+    bot_processes: &mut Vec<Child>,
+    decks: &mut Vec<Vec<usize>>,
+    rng: &mut ThreadRng,
+) {
     for (player_id, bot_process) in bot_processes.iter_mut().enumerate() {
         let hands = format!(
             "{}\n",
@@ -135,62 +139,102 @@ fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: Vec<Str
         };
         if s == "MULLIGAN" {
             debug!("player {} mulliganed", player_id);
-            decks[player_id].shuffle(&mut rng);
+            decks[player_id].shuffle(rng);
         }
     }
+}
+fn format_turn_input(
+    field: &Field,
+    card_catalog: &HashMap<usize, &Card>,
+    state: &mut State,
+    player_id: usize,
+) -> String {
+    let action_candidates = state.generate_valid_actions(&card_catalog, player_id);
+    debug!(
+        "turn:{}, player_id:{}, n_action:{}",
+        state.turn,
+        player_id,
+        action_candidates.len()
+    );
+    format!(
+        "{turn}\n{special_points}\n{stage_shape}\n{hands}\n{n_action}\n{action_candidates}\n",
+        turn = state.turn,
+        special_points = state
+            .players
+            .iter()
+            .map(|p| p.special_point.to_string())
+            .collect::<Vec<String>>()
+            .join(" "),
+        stage_shape = field.shape,
+        hands = state.players[player_id]
+            .hands
+            .iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<String>>()
+            .join(" "),
+        n_action = action_candidates.len(),
+        action_candidates = action_candidates
+            .iter()
+            .map(|a| a.to_string())
+            .collect::<Vec<String>>()
+            .join("\n")
+    )
+}
+fn read_action(bot_process: &mut Child, player_id: usize) -> Action {
+    let stdout = bot_process.stdout.as_mut().expect("");
+    let mut reader = BufReader::new(stdout);
+    let mut s = String::new();
+    match reader.read_line(&mut s) {
+        Err(why) => panic!("couldn't read player stdout: {}", why),
+        Ok(_) => debug!("player {} action: {}", player_id, s),
+    };
+    Action::from(s.as_ref())
+}
+fn game_loop(
+    env: &Environment,
+    field: &Field,
+    card_catalog: &HashMap<usize, &Card>,
+    bot_processes: &mut Vec<Child>,
+    state: &mut State,
+) {
+    let mut actions = vec![];
+
+    for (player_id, bot_process) in bot_processes.iter_mut().enumerate() {
+        let turn_input = format_turn_input(field, card_catalog, state, player_id);
+
+        let mut stdin = bot_process.stdin.as_ref().unwrap();
+        if let Err(why) = stdin.write_all(turn_input.as_bytes()) {
+            panic!("couldn't write to player stdin: {}", why);
+        }
+        stdin.flush().unwrap_or(());
+
+        let action = read_action(bot_process, player_id);
+        actions.push(action);
+    }
+
+    state.apply(env, &card_catalog, &actions);
+}
+
+fn exec_game(env: &Environment, cards: &[Card], field: &Field, commands: &[&str]) -> GameInfo {
+    let mut rng = rand::thread_rng();
+    let mut bot_processes = lunch_bots(commands);
+
+    let initial_input = format_initial_input(env, cards, field);
+    print_initial_input(&mut bot_processes, &initial_input);
+
+    let mut card_catalog = HashMap::new();
+    for card in cards {
+        card_catalog.insert(card.id, card);
+    }
+
+    let mut decks = read_decks(&mut bot_processes, &mut rng);
+
+    check_mulligan(env, &mut bot_processes, &mut decks, &mut rng);
 
     let mut state = State::new(env, &card_catalog, field, &decks);
     // 毎ターンの繰り返し処理
     while !state.is_done(env) {
-        let mut actions = vec![];
-
-        for (player_id, bot_process) in bot_processes.iter_mut().enumerate() {
-            let action_candidates = state.generate_valid_actions(&card_catalog, player_id);
-            debug!(
-                "turn:{}, player_id:{}, n_action:{}",
-                state.turn,
-                player_id,
-                action_candidates.len()
-            );
-            let turn_input = format!(
-                "{turn}\n{special_points}\n{stage_shape}\n{hands}\n{n_action}\n{action_candidates}\n",
-                turn = state.turn,
-                special_points = state
-                    .players
-                    .iter()
-                    .map(|p| p.special_point.to_string())
-                    .collect::<Vec<String>>()
-                    .join(" "),
-                stage_shape = field.shape,
-                hands = state.players[player_id]
-                    .hands
-                    .iter()
-                    .map(|v| v.to_string())
-                    .collect::<Vec<String>>()
-                    .join(" "),
-                    n_action = action_candidates.len(),
-                    action_candidates = action_candidates.iter().map(|a| a.to_string()).collect::<Vec<String>>().join("\n")
-                );
-            let mut stdin = bot_process.stdin.as_ref().unwrap();
-
-            if let Err(why) = stdin.write_all(turn_input.as_bytes()) {
-                panic!("couldn't write to player stdin: {}", why);
-            }
-            stdin.flush().unwrap_or(());
-
-            // TODO: botから入力を受け取る
-            let stdout = bot_process.stdout.as_mut().expect("");
-            let mut reader = BufReader::new(stdout);
-            let mut s = String::new();
-            match reader.read_line(&mut s) {
-                Err(why) => panic!("couldn't read player stdout: {}", why),
-                Ok(_) => debug!("player {} action: {}", player_id, s),
-            };
-            let action = Action::from(s.as_ref());
-            actions.push(action);
-        }
-
-        state.apply(env, &card_catalog, &actions);
+        game_loop(env, field, &card_catalog, &mut bot_processes, &mut state)
     }
     drop(bot_processes);
 
@@ -230,10 +274,7 @@ fn main() {
             &env,
             &cards,
             &field,
-            vec![
-                "target/release/bot".to_string(),
-                "target/release/bot".to_string(),
-            ],
+            &vec!["target/release/bot", "target/release/bot"],
         );
         if let Some(winner) = result.winner {
             total_wins[winner] += 1;
