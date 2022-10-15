@@ -4,6 +4,8 @@ use std::{
     collections::{HashMap, VecDeque},
     fmt::{Display, Formatter},
 };
+
+pub mod text_protocol;
 pub type CardId = usize;
 pub type FieldId = usize;
 pub type PlayerId = usize;
@@ -28,7 +30,13 @@ pub struct Environment {
     pub is_deplicated_pick_enabled: bool,
 }
 impl Environment {
-    pub fn new(player_size: usize, deck_size: usize, hand_size: usize, max_turn: usize, is_deplicated_pick_enabled:bool) -> Self {
+    pub fn new(
+        player_size: usize,
+        deck_size: usize,
+        hand_size: usize,
+        max_turn: usize,
+        is_deplicated_pick_enabled: bool,
+    ) -> Self {
         assert!(max_turn + hand_size <= deck_size + 1);
         Self {
             player_size,

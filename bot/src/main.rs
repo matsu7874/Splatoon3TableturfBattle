@@ -1,102 +1,11 @@
 use rand::prelude::*;
 use std::io;
 
-use tableturfbattle::{Card, CardId, CardShape, FieldShape};
-macro_rules! read_line {
-    () => {{
-        let mut buff = String::new();
-        io::stdin()
-            .read_line(&mut buff)
-            .expect("標準入力から読める"); // 1行読み込み
-        buff.split("\n")
-            .map(|s| s.split(" ").map(|s| s.to_string()).collect::<Vec<String>>())
-            .flatten()
-            .filter(|s| s.len() > 0)
-            .collect::<Vec<String>>()
-    }};
-}
-macro_rules! parse_input {
-    ($x:expr, $t:ident) => {
-        $x.trim().parse::<$t>().unwrap()
-    };
-}
-
-struct InitialInput {
-    player_size: usize,
-    deck_size: usize,
-    hand_size: usize,
-    max_turn: usize,
-    is_deplicated_pick_enabled:bool,
-    field_size_y: usize,
-    field_size_x: usize,
-    field: FieldShape,
-    cards: Vec<Card>,
-}
-fn read_initial_input() -> InitialInput {
-    let chunks = read_line!();
-    let player_size = parse_input!(chunks[0], usize);
-    let deck_size = parse_input!(chunks[1], usize);
-    let hand_size = parse_input!(chunks[2], usize);
-    let max_turn = parse_input!(chunks[3], usize);
-    let is_deplicated_pick_enabled = parse_input!(chunks[4], usize);
-
-    let chunks = read_line!();
-    let field_size_y = parse_input!(chunks[0], usize);
-    let field_size_x = parse_input!(chunks[1], usize);
-
-    let mut rows = vec![];
-    for _ in 0..field_size_y {
-        let chunks = read_line!();
-        rows.push(chunks.join(""))
-    }
-    assert!(rows.iter().all(|row| row.len() == field_size_x));
-    let field = FieldShape::new(&rows.join("\n"));
-
-    let chunks = read_line!();
-    let n_cards = parse_input!(chunks[0], usize);
-    let mut cards = vec![];
-    for _ in 0..n_cards {
-        let chunks = read_line!();
-        let card_id = parse_input!(chunks[0], usize);
-        let card_cost = parse_input!(chunks[1], usize);
-        let card_size_y = parse_input!(chunks[2], usize);
-        let _card_size_x = parse_input!(chunks[3], usize);
-        let mut rows = vec![];
-        for _ in 0..card_size_y {
-            let chunks = read_line!();
-            rows.push(chunks.join(""))
-        }
-        let card_shape = CardShape::new(&rows.join("\n"));
-        cards.push(Card {
-            id: card_id,
-            name: "".to_string(),
-            cost: card_cost,
-            power: card_shape.count_colored_squares(),
-            shape: card_shape,
-        })
-    }
-
-    InitialInput {
-        player_size,
-        deck_size,
-        hand_size,
-        max_turn,
-        is_deplicated_pick_enabled:is_deplicated_pick_enabled==1 ,
-        field_size_y,
-        field_size_x,
-        field,
-        cards,
-    }
-}
-
-fn read_hands() -> Vec<usize> {
-    let chunks = read_line!();
-    let hands = chunks
-        .iter()
-        .map(|s| s.parse::<usize>().unwrap())
-        .collect::<Vec<usize>>();
-    hands
-}
+use tableturfbattle::{
+    parse_input, read_line,
+    text_protocol::{read_hands, read_initial_input},
+    CardId, FieldShape,
+};
 
 struct TurnInput {
     turn: usize,
@@ -139,25 +48,33 @@ fn read_turn_input(field_size_y: usize) -> TurnInput {
     }
 }
 
-const STARTER_DECK:[CardId; 15] = [
+const STARTER_DECK: [CardId; 15] = [
     6, 13, 22, 28, 40, 34, 45, 52, 55, 56, 159, 137, 141, 103, 92,
 ];
 fn main() {
     let mut rng = rand::thread_rng();
-    println!("matsu784_bot");//bot名
+    println!("matsu784_bot"); //bot名
 
     let initial_input = read_initial_input();
     // スターターデッキ
-    let deck = if STARTER_DECK.iter().all(|card_id| initial_input.cards.iter().any(|card| card.id == *card_id)){
+    let deck = if STARTER_DECK
+        .iter()
+        .all(|card_id| initial_input.cards.iter().any(|card| card.id == *card_id))
+    {
         Vec::from(STARTER_DECK)
-    } else{
+    } else {
         let mut deck = vec![];
-        if initial_input.is_deplicated_pick_enabled{
-            for _ in 0..initial_input.deck_size{
+        if initial_input.is_deplicated_pick_enabled {
+            for _ in 0..initial_input.deck_size {
                 deck.push(initial_input.cards[rng.gen_range(0..initial_input.cards.len())].id);
             }
-        }else{
-            deck = initial_input.cards.iter().take(initial_input.deck_size).map(|card| card.id).collect::<Vec<CardId>>();
+        } else {
+            deck = initial_input
+                .cards
+                .iter()
+                .take(initial_input.deck_size)
+                .map(|card| card.id)
+                .collect::<Vec<CardId>>();
         }
         deck
     };
